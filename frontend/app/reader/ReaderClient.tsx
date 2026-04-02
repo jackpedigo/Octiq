@@ -123,7 +123,7 @@ useEffect(() => {
         className="min-h-screen flex items-center justify-center px-6"
         style={{
           background:
-            "linear-gradient(180deg, #2b0d73 0%, #1F0954 100%)",
+            "linear-gradient(180deg, #1F0954 0%, #1F0954 100%)",
           fontFamily: "Helvetica, Arial, sans-serif",
         }}
       >
