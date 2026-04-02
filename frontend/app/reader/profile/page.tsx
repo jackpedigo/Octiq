@@ -1,10 +1,14 @@
-import { Suspense } from "react";
 import ProfileClient from "./ProfileClient";
 
-export default function ProfilePage() {
-  return (
-    <Suspense fallback={null}>
-      <ProfileClient />
-    </Suspense>
-  );
+export const dynamic = "force-dynamic";
+
+export default async function ProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ user?: string }>;
+}) {
+  const sp = await searchParams;
+  const userId = sp.user || "";
+
+  return <ProfileClient userId={userId} />;
 }

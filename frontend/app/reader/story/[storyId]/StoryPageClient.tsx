@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const API_BASE =
@@ -98,12 +97,13 @@ function ClaimHover({
   );
 }
 
-export default function StoryPageClient() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-
-  const storyId = String(params.storyId || "");
-  const userId = (searchParams.get("user") || "").trim();
+export default function StoryPageClient({
+  storyId,
+  userId,
+}: {
+  storyId: string;
+  userId: string;
+}) {
 
   const [story, setStory] = useState<StoryData | null>(null);
   const [loading, setLoading] = useState(true);

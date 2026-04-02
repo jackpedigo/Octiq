@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 type HomepageStory = {
@@ -21,8 +20,11 @@ type HomepageStory = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || "http://127.0.0.1:8000";
 
-export default function ReaderClient() {
-  const searchParams = useSearchParams();
+export default function ReaderClient({
+  initialUser,
+}: {
+  initialUser: string;
+}) {
 
   const [userProfileId, setUserProfileId] = useState("");
   const [submittedUserId, setSubmittedUserId] = useState("");
@@ -68,20 +70,19 @@ export default function ReaderClient() {
     }
   };
 
-  useEffect(() => {
-    const urlUser = searchParams.get("user");
-    if (!urlUser || submittedUserId) return;
+useEffect(() => {
+  if (!initialUser || submittedUserId) return;
 
-    const cleanUser = urlUser.trim();
-    setUserProfileId(cleanUser);
-    setSubmittedUserId(cleanUser);
+  const cleanUser = initialUser.trim();
+  setUserProfileId(cleanUser);
+  setSubmittedUserId(cleanUser);
 
-    loadUserProfile(cleanUser).catch((err) => {
-      setError(err.message || "Failed to load user profile");
-    });
+  loadUserProfile(cleanUser).catch((err) => {
+    setError(err.message || "Failed to load user profile");
+  });
 
-    loadHomepage(cleanUser);
-  }, [searchParams, submittedUserId]);
+  loadHomepage(cleanUser);
+}, [initialUser, submittedUserId]);
 
   const handleEnter = () => {
     if (!userProfileId.trim()) {

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 const API_BASE =
@@ -112,9 +111,11 @@ function computeEvidenceVisibility(
   return "medium";
 }
 
-export default function ProfileClient() {
-  const searchParams = useSearchParams();
-  const userId = searchParams.get("user") || "";
+export default function ProfileClient({
+  userId,
+}: {
+  userId: string;
+}) {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

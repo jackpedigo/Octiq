@@ -1,10 +1,21 @@
-import { Suspense } from "react";
 import StoryPageClient from "./StoryPageClient";
 
-export default function StoryPage() {
+export const dynamic = "force-dynamic";
+
+export default async function StoryPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ storyId: string }>;
+  searchParams: Promise<{ user?: string }>;
+}) {
+  const p = await params;
+  const sp = await searchParams;
+
   return (
-    <Suspense fallback={null}>
-      <StoryPageClient />
-    </Suspense>
+    <StoryPageClient
+      storyId={p.storyId}
+      userId={sp.user || ""}
+    />
   );
 }

@@ -1,10 +1,14 @@
-import { Suspense } from "react";
 import ReaderClient from "./ReaderClient";
 
-export default function ReaderPage() {
-  return (
-    <Suspense fallback={null}>
-      <ReaderClient />
-    </Suspense>
-  );
+export const dynamic = "force-dynamic";
+
+export default async function ReaderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ user?: string }>;
+}) {
+  const sp = await searchParams;
+  const initialUser = sp.user || "";
+
+  return <ReaderClient initialUser={initialUser} />;
 }
