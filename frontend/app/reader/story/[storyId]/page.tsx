@@ -1,6 +1,5 @@
+import { connection } from "next/server";
 import StoryPageClient from "./StoryPageClient";
-
-export const dynamic = "force-dynamic";
 
 export default async function StoryPage({
   params,
@@ -9,13 +8,10 @@ export default async function StoryPage({
   params: Promise<{ storyId: string }>;
   searchParams: Promise<{ user?: string }>;
 }) {
+  await connection();
+
   const p = await params;
   const sp = await searchParams;
 
-  return (
-    <StoryPageClient
-      storyId={p.storyId}
-      userId={sp.user || ""}
-    />
-  );
+  return <StoryPageClient storyId={p.storyId} userId={sp.user || ""} />;
 }

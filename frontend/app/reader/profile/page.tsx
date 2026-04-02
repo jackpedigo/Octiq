@@ -1,14 +1,13 @@
+import { connection } from "next/server";
 import ProfileClient from "./ProfileClient";
-
-export const dynamic = "force-dynamic";
 
 export default async function ProfilePage({
   searchParams,
 }: {
   searchParams: Promise<{ user?: string }>;
 }) {
-  const sp = await searchParams;
-  const userId = sp.user || "";
+  await connection();
 
-  return <ProfileClient userId={userId} />;
+  const sp = await searchParams;
+  return <ProfileClient userId={sp.user || ""} />;
 }
