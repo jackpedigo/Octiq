@@ -544,6 +544,14 @@ def get_story(story_cluster_id: str, user_profile_id: str | None = None):
 
     cluster = cluster_response.data[0]
 
+    claims = [
+        c for c in claims
+        if c.get("verification_status") in {"supported", "core"}
+        or c.get("is_core_claim")
+    ]
+
+    claims = sorted(claims, key=lambda c: c.get("story_order") or 999)
+
     sources_response = (
         supabase.table("story_sources")
         .select("source_id")

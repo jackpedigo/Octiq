@@ -48,6 +48,24 @@ function formatSourceType(type: string) {
     .join(" ");
 }
 
+function hasAttributionCue(text: string) {
+  const lower = text.toLowerCase();
+
+  return (
+    lower.includes("according to") ||
+    lower.includes("said") ||
+    lower.includes("told") ||
+    lower.includes("wrote on x") ||
+    lower.includes("posted on x") ||
+    lower.includes("in a statement") ||
+    lower.includes("according to a") ||
+    lower.includes("records show") ||
+    lower.includes("court filing") ||
+    lower.includes("document") ||
+    lower.includes('"')
+  );
+}
+
 function normalizeText(text: string) {
   return text
     .toLowerCase()
@@ -136,7 +154,7 @@ function buildBodySegments(body: string, claims: Claim[], sources: Source[]) {
   if (!body) return [<span key="empty">No body available yet.</span>];
 
   const sentences = splitIntoSentences(body);
-
+ 
   return sentences.map((sentence, index) => {
     let bestClaim: Claim | undefined;
     let bestSource: Source | undefined;
@@ -144,6 +162,14 @@ function buildBodySegments(body: string, claims: Claim[], sources: Source[]) {
 
     for (const claim of claims) {
       const source = sources.find((s) => s.id === claim.source_id);
+
+      if (!hasAttributionCue(sentence)) {
+        return (
+          <span key={`sentence-${index}`}>
+            <span>{sentence}</span>{" "}
+          </span>
+        );
+      }
 
       // never link octiq copy
       if (!source || source.source_type === "octiq_copy") continue;
@@ -164,7 +190,7 @@ function buildBodySegments(body: string, claims: Claim[], sources: Source[]) {
         }
       }
     }
-
+    
     // threshold: only link if sentence meaningfully overlaps
     const shouldLink = bestClaim && bestSource && bestScore >= 0.28;
 
@@ -204,7 +230,9 @@ export default function StoryPageClient({
       { method: "POST" }
     ).catch(() => {});
 
-    const res = await fetch(`${API_BASE}/stories/${storyId}`);
+    const res = await fetch(
+      `${API_BASE}/stories/${storyId}?user_profile_id=${encodeURIComponent(userId)}`
+    );
     const data = await res.json();
 
     setStory(data);

@@ -230,9 +230,61 @@ Source text:
     except:
         raise HTTPException(500, "Source assessment failed")
 
-def render_story_from_cluster_and_profile(cluster, claims, profile):
+def build_render_instructions(profile: dict) -> str:
+    depth = profile.get("depth_preference", "standard")
+    vocab = profile.get("vocabulary_level", "standard")
+    evidence = profile.get("evidence_visibility", "medium")
+    interests = profile.get("interests", [])
 
-    claims_text = "\n".join([f"- {c['normalized_claim_text']}" for c in claims])
+    instructions = []
+
+    if depth == "quick":
+        instructions.append("Keep the article concise with minimal context.")
+    elif depth == "deep":
+        instructions.append("Provide deeper context and connect claims more fully.")
+    else:
+        instructions.append("Use standard article depth appropriate for a general reader.")
+
+    if vocab == "simple":
+        instructions.append("Use plain, accessible language.")
+    elif vocab == "expert":
+        instructions.append("Use more precise and technical language when appropriate.")
+    else:
+        instructions.append("Use standard news language.")
+
+    if evidence == "low":
+        instructions.append("Do not emphasize sourcing explicitly.")
+    elif evidence == "high":
+        instructions.append("Make sourcing more visible when supported by claims.")
+    else:
+        instructions.append("Lightly reference sourcing where natural.")
+
+    if interests:
+        instructions.append(
+            f"Emphasize angles relevant to: {', '.join(interests)} when supported by claims."
+        )
+
+    return "\n".join(f"- {x}" for x in instructions)
+
+def render_story_from_cluster_and_profile(cluster, claims, profile):
+    interests = profile.get("interests") or []
+    if isinstance(interests, str):
+        interests = [interests]
+
+    claims_text = "\n".join(
+        [
+            f"- {c.get('normalized_claim_text') or c.get('claim_text')}"
+            for c in claims
+            if c.get("normalized_claim_text") or c.get("claim_text")
+        ]
+    )
+
+    render_instructions = build_render_instructions({
+        "depth_preference": profile.get("depth_preference", "standard"),
+        "vocabulary_level": profile.get("vocabulary_level", "standard"),
+        "evidence_visibility": profile.get("evidence_visibility", "medium"),
+        "interests": interests,
+    })
 
     prompt = f"""
 You are writing a source-grounded news article for a specific user.

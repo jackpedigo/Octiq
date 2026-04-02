@@ -993,7 +993,19 @@ const res = await fetch(url);
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <div className="font-medium text-slate-900">
-                                  {source.title || formatSourceType(source.source_type)}
+                                  {source.source_url ? (
+                                    <a
+                                      href={source.source_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="hover:underline"
+                                      style={{ color: "#1F0954" }}
+                                    >
+                                      {source.title || formatSourceType(source.source_type)}
+                                    </a>
+                                  ) : (
+                                    source.title || formatSourceType(source.source_type)
+                                  )}
                                 </div>
                                 {source.source_strength_label && (
                                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">

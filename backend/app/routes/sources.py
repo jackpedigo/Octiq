@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from datetime import datetime
 from app.supabase_client import supabase
 from app.schemas import SourceCreate
+from app.routes.stories import add_source_to_story_cluster, match_or_create_story_cluster
 from app.services.ai_extraction import (
     extract_claims_from_source,
     assess_source_strength,
@@ -21,7 +22,7 @@ def ingest_source(source: SourceCreate):
             "story_cluster_id": source.story_cluster_id,
             "source_date": now.date().isoformat(),
             "source_time": now.strftime("%H:%M:%S"),
-            "title": None,
+            "title": "Octiq Copy",
             "source_url": None,
             "file_url": source.file_url,
             "file_type": source.file_type,
@@ -83,6 +84,9 @@ def ingest_source(source: SourceCreate):
         verification_status = (
             "core" if created_source.get("is_canonical") else "attributed_only"
         )
+        is_core_claim = (
+                True if created_source.get("is_canonical") else False
+        )
 
         supabase.table("claims").insert({
             "source_id": source_id,
@@ -92,16 +96,29 @@ def ingest_source(source: SourceCreate):
             "claim_type": claim.get("claim_type"),
             "claim_order": claim.get("claim_order"),
             "verification_status": verification_status,
+            "is_core_claim": is_core_claim,
             "support_count": 1 if created_source.get("is_canonical") else 0,
             "source_strength_at_ingest": created_source.get("source_strength_score"),
-        }).execute()
+})      .execute()
+
+    cluster_result = None
+
+    if source.story_cluster_id:
+        cluster_result = add_source_to_story_cluster(source.story_cluster_id, source_id)
+    else:
+        cluster_result = match_or_create_story_cluster(source_id)
 
     return {
         "source_id": source_id,
         "source_type": created_source.get("source_type"),
-        "story_cluster_id": created_source.get("story_cluster_id"),
+        "story_cluster_id": source.story_cluster_id if source.story_cluster_id else (
+            cluster_result.get("story_cluster_id")
+            or cluster_result.get("create_result", {}).get("story_cluster_id")
+            or cluster_result.get("add_result", {}).get("story_cluster_id")
+        ),
         "claims_created": len(claims),
         "source_strength_score": created_source.get("source_strength_score"),
         "source_strength_label": created_source.get("source_strength_label"),
         "is_canonical": created_source.get("is_canonical"),
+        "cluster_result": cluster_result,
     }
