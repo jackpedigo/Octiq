@@ -19,7 +19,10 @@ type Claim = {
   id: string;
   source_id?: string | null;
   claim_text: string;
+  normalized_claim_text?: string | null;
   support_excerpt?: string | null;
+  is_core_claim?: boolean;
+  claim_type?: string | null;
 };
 
 type StoryData = {
@@ -43,6 +46,38 @@ function formatSourceType(type: string) {
     .split("_")
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
+}
+
+function normalizeText(text: string) {
+  return text
+    .toLowerCase()
+    .replace(/[“”"']/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitIntoSentences(text: string) {
+  if (!text.trim()) return [];
+  return text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((s) => s.trim()) || [];
+}
+
+function getWordSet(text: string) {
+  return new Set(normalizeText(text).split(" ").filter(Boolean));
+}
+
+function getOverlapScore(a: string, b: string) {
+  const aWords = getWordSet(a);
+  const bWords = getWordSet(b);
+
+  if (aWords.size === 0 || bWords.size === 0) return 0;
+
+  let overlap = 0;
+  for (const word of aWords) {
+    if (bWords.has(word)) overlap += 1;
+  }
+
+  return overlap / Math.max(aWords.size, 1);
 }
 
 function ClaimHover({
@@ -80,7 +115,7 @@ function ClaimHover({
             </div>
           )}
 
-          {source.source_url && (
+          {source?.source_url && (
             <a
               href={source.source_url}
               target="_blank"
@@ -95,6 +130,59 @@ function ClaimHover({
       )}
     </span>
   );
+}
+
+function buildBodySegments(body: string, claims: Claim[], sources: Source[]) {
+  if (!body) return [<span key="empty">No body available yet.</span>];
+
+  const sentences = splitIntoSentences(body);
+
+  return sentences.map((sentence, index) => {
+    let bestClaim: Claim | undefined;
+    let bestSource: Source | undefined;
+    let bestScore = 0;
+
+    for (const claim of claims) {
+      const source = sources.find((s) => s.id === claim.source_id);
+
+      // never link octiq copy
+      if (!source || source.source_type === "octiq_copy") continue;
+
+      const comparisonTexts = [
+        claim.normalized_claim_text,
+        claim.claim_text,
+        claim.support_excerpt,
+      ].filter(Boolean) as string[];
+
+      for (const comparisonText of comparisonTexts) {
+        const score = getOverlapScore(sentence, comparisonText);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestClaim = claim;
+          bestSource = source;
+        }
+      }
+    }
+
+    // threshold: only link if sentence meaningfully overlaps
+    const shouldLink = bestClaim && bestSource && bestScore >= 0.28;
+
+    return (
+      <span key={`sentence-${index}`}>
+        {shouldLink ? (
+          <ClaimHover
+            text={sentence}
+            source={bestSource}
+            claim={bestClaim}
+          />
+        ) : (
+          <span>{sentence}</span>
+        )}
+        {" "}
+      </span>
+    );
+  });
 }
 
 export default function StoryPageClient({
