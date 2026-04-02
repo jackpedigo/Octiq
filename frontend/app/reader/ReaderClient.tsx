@@ -114,8 +114,7 @@ useEffect(() => {
       return `Hi, ${firstName}. Thank you for trusting Octiq. Here’s what you should know today.`;
     }
 
-    return `Hi, ${firstName}. Thank you for trusting Octiq. Here’s what you should know today: ${headlines.join(
-      " • "
+    return `Hi, ${firstName}. Thank you for trusting Octiq. Here’s what you should know today.
     )}`;
   }, [stories, firstName]);
 
