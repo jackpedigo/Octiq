@@ -531,7 +531,7 @@ def merge_story_cluster(story_cluster_id: str, payload: MergeStoryClusterRequest
     }
 
 @router.get("/stories/{story_cluster_id}")
-def get_story(story_cluster_id: str):
+def get_story(story_cluster_id: str, user_profile_id: str | None = None):
     cluster_response = (
         supabase.table("story_clusters")
         .select("*")
@@ -595,10 +595,17 @@ def get_story(story_cluster_id: str):
         )
         claims = claims_result.data or []
 
-    render_response = (
+    render_query = (
         supabase.table("story_renders")
         .select("*")
         .eq("story_cluster_id", story_cluster_id)
+    )
+
+    if user_profile_id:
+        render_query = render_query.eq("user_profile_id", user_profile_id)
+
+    render_response = (
+        render_query
         .order("created_at", desc=True)
         .limit(1)
         .execute()

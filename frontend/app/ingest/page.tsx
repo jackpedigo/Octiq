@@ -373,7 +373,15 @@ const mergeSelectedCluster = async () => {
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/stories/${id}`);
+      const profileIdForView =
+  tab === "publishable" ? EDITORIAL_PROFILE_ID : "";
+
+const url = profileIdForView
+  ? `${API_BASE}/stories/${id}?user_profile_id=${encodeURIComponent(profileIdForView)}`
+  : `${API_BASE}/stories/${id}`;
+
+const res = await fetch(url);
+
       const data = await res.json();
 
       if (!res.ok) {
