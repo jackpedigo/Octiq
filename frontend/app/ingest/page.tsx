@@ -134,6 +134,127 @@ function buildMissingList(item: DashboardStory, detail: StoryDetail | null) {
   return missing;
 }
 
+function getSkeletonSections(claims: Claim[]) {
+  const ordered = claims
+    .slice()
+    .sort((a, b) => (a.story_order || 999) - (b.story_order || 999));
+
+  const lead = ordered.slice(0, 2);
+  const support = ordered.slice(2, 6);
+  const context = ordered.slice(6);
+
+  return { lead, support, context };
+}
+
+function getSourceForClaim(claim: Claim, sources: Source[]) {
+  return sources.find((source) => source.id === claim.source_id);
+}
+
+function StorySkeletonView({
+  claims,
+  sources,
+}: {
+  claims: Claim[];
+  sources: Source[];
+}) {
+  const { lead, support, context } = getSkeletonSections(claims);
+
+  const renderClaimRow = (claim: Claim) => {
+    const source = getSourceForClaim(claim, sources);
+
+    return (
+      <div
+        key={claim.id}
+        className="rounded-2xl border border-slate-200 p-4"
+      >
+        <div className="font-medium text-slate-900">
+          {claim.normalized_claim_text || claim.claim_text}
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+            {statusPill(claim.verification_status)}
+          </span>
+
+          {claim.claim_type ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+              {claim.claim_type}
+            </span>
+          ) : null}
+        </div>
+
+        {source && (
+          <div className="mt-3 text-sm text-slate-600">
+            Source:{" "}
+            {source.source_url ? (
+              <a
+                href={source.source_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium hover:underline"
+                style={{ color: "#1F0954" }}
+              >
+                {source.title || formatSourceType(source.source_type)}
+              </a>
+            ) : (
+              <span>{source.title || formatSourceType(source.source_type)}</span>
+            )}
+          </div>
+        )}
+
+        {claim.support_excerpt ? (
+          <div className="mt-2 text-sm text-slate-500">
+            {claim.support_excerpt}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+      <h3 className="text-xl font-semibold text-slate-950">
+        Story skeleton
+      </h3>
+
+      <div className="space-y-4">
+        <div>
+          <div className="mb-3 text-sm font-medium uppercase tracking-wide text-slate-500">
+            Lead
+          </div>
+          <div className="space-y-3">
+            {lead.length > 0 ? lead.map(renderClaimRow) : (
+              <div className="text-sm text-slate-500">No lead claims yet.</div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-3 text-sm font-medium uppercase tracking-wide text-slate-500">
+            Key support
+          </div>
+          <div className="space-y-3">
+            {support.length > 0 ? support.map(renderClaimRow) : (
+              <div className="text-sm text-slate-500">No supporting claims yet.</div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-3 text-sm font-medium uppercase tracking-wide text-slate-500">
+            Context
+          </div>
+          <div className="space-y-3">
+            {context.length > 0 ? context.map(renderClaimRow) : (
+              <div className="text-sm text-slate-500">No context claims yet.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function OctiqEditorialDashboard() {
   const [tab, setTab] = useState<"dashboard" | "publishable" | "ingest">(
     "dashboard"
@@ -919,26 +1040,16 @@ const res = await fetch(url);
                       </div>
                     )}
 
-                    {tab === "publishable" && (
-                      <>
-                        {selectedStory.latest_render ? (
-                          <div className="space-y-4">
-                            {selectedStory.latest_render.summary && (
-                              <p className="text-lg text-slate-700">
-                                {selectedStory.latest_render.summary}
-                              </p>
-                            )}
+                    {tab === "dashboard" && (
+                      <div className="text-slate-600">
+                        This view shows the structured backbone of the story, not a user render.
+                      </div>
+                    )}
 
-                            <div className="whitespace-pre-wrap text-slate-800 leading-[1.15]">
-                              {selectedStory.latest_render.body || "No rendered body yet."}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-slate-600">
-                            No publishable render yet. Click “Render full review version” to generate one.
-                          </div>
-                        )}
-                      </>
+                    {tab === "publishable" && (
+                      <div className="text-slate-600">
+                        This view shows the structured backbone of the story. Use “Render full review version” only when you want to preview the editorial-profile article.
+                      </div>
                     )}
                   </div>
 
@@ -980,6 +1091,10 @@ const res = await fetch(url);
 
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
                     <div className="space-y-6">
+                      <StorySkeletonView
+                        claims={selectedStory.claims}
+                        sources={selectedStory.sources}
+                      />
                       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
                         <h3 className="text-xl font-semibold text-slate-950">
                           Sources attached
@@ -1044,49 +1159,6 @@ const res = await fetch(url);
                               </div>
                             </div>
                           ))}
-                        </div>
-                      </div>
-
-                      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                        <h3 className="text-xl font-semibold text-slate-950">
-                          Story claims
-                        </h3>
-
-                        <div className="space-y-3">
-                          {selectedStory.claims
-                            .slice()
-                            .sort((a, b) => (a.story_order || 999) - (b.story_order || 999))
-                            .map((claim) => (
-                              <div
-                                key={claim.id}
-                                className="rounded-2xl border border-slate-200 p-4"
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="font-medium text-slate-900">
-                                    {claim.normalized_claim_text || claim.claim_text}
-                                  </div>
-                                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                                    {statusPill(claim.verification_status)}
-                                  </span>
-                                  {claim.claim_type ? (
-                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                                      {claim.claim_type}
-                                    </span>
-                                  ) : null}
-                                  {claim.support_count ? (
-                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                                      {claim.support_count} supports
-                                    </span>
-                                  ) : null}
-                                </div>
-
-                                {claim.support_excerpt && (
-                                  <div className="mt-2 text-sm text-slate-600">
-                                    {claim.support_excerpt}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
                         </div>
                       </div>
                     </div>

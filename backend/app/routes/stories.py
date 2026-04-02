@@ -544,14 +544,6 @@ def get_story(story_cluster_id: str, user_profile_id: str | None = None):
 
     cluster = cluster_response.data[0]
 
-    claims = [
-        c for c in claims
-        if c.get("verification_status") in {"supported", "core"}
-        or c.get("is_core_claim")
-    ]
-
-    claims = sorted(claims, key=lambda c: c.get("story_order") or 999)
-
     sources_response = (
         supabase.table("story_sources")
         .select("source_id")
@@ -590,6 +582,7 @@ def get_story(story_cluster_id: str, user_profile_id: str | None = None):
     claim_ids = [c["claim_id"] for c in claim_links.data] if claim_links.data else []
 
     claims = []
+
     if claim_ids:
         claims_result = (
             supabase.table("claims")
@@ -601,7 +594,16 @@ def get_story(story_cluster_id: str, user_profile_id: str | None = None):
             .order("story_order")
             .execute()
         )
+
         claims = claims_result.data or []
+
+    claims = [
+        c for c in claims
+        if c.get("verification_status") in {"supported", "core"}
+        or c.get("is_core_claim")
+    ]
+
+    claims = sorted(claims, key=lambda c: c.get("story_order") or 999)
 
     render_query = (
         supabase.table("story_renders")
