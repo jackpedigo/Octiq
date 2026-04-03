@@ -134,122 +134,107 @@ function buildMissingList(item: DashboardStory, detail: StoryDetail | null) {
   return missing;
 }
 
-function getSkeletonSections(claims: Claim[]) {
+function getSourceForClaim(claim: Claim, sources: Source[]) {
+  return sources.find((source) => source.id === claim.source_id);
+}
+
+function getStoryBackboneParagraphs(claims: Claim[]) {
   const ordered = claims
     .slice()
     .sort((a, b) => (a.story_order || 999) - (b.story_order || 999));
 
   const lead = ordered.slice(0, 2);
-  const support = ordered.slice(2, 6);
-  const context = ordered.slice(6);
+  const support = ordered.slice(2, 5);
+  const context = ordered.slice(5, 8);
+  const tail = ordered.slice(8);
 
-  return { lead, support, context };
+  const buildParagraph = (items: Claim[]) =>
+    items
+      .map((claim) => claim.normalized_claim_text || claim.claim_text)
+      .filter(Boolean)
+      .join(" ");
+
+  return [
+    { label: "Lead", claims: lead, text: buildParagraph(lead) },
+    { label: "Support", claims: support, text: buildParagraph(support) },
+    { label: "Context", claims: context, text: buildParagraph(context) },
+    { label: "Tail", claims: tail, text: buildParagraph(tail) },
+  ].filter((section) => section.claims.length > 0 && section.text.trim());
 }
 
-function getSourceForClaim(claim: Claim, sources: Source[]) {
-  return sources.find((source) => source.id === claim.source_id);
+function getSourcesForClaims(claims: Claim[], sources: Source[]) {
+  const sourceMap = new Map<string, Source>();
+
+  for (const claim of claims) {
+    const source = sources.find((s) => s.id === claim.source_id);
+    if (source) {
+      sourceMap.set(source.id, source);
+    }
+  }
+
+  return Array.from(sourceMap.values());
 }
 
-function StorySkeletonView({
+function StoryBackboneView({
   claims,
   sources,
 }: {
   claims: Claim[];
   sources: Source[];
 }) {
-  const { lead, support, context } = getSkeletonSections(claims);
-
-  const renderClaimRow = (claim: Claim) => {
-    const source = getSourceForClaim(claim, sources);
-
-    return (
-      <div
-        key={claim.id}
-        className="rounded-2xl border border-slate-200 p-4"
-      >
-        <div className="font-medium text-slate-900">
-          {claim.normalized_claim_text || claim.claim_text}
-        </div>
-
-        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-            {statusPill(claim.verification_status)}
-          </span>
-
-          {claim.claim_type ? (
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
-              {claim.claim_type}
-            </span>
-          ) : null}
-        </div>
-
-        {source && (
-          <div className="mt-3 text-sm text-slate-600">
-            Source:{" "}
-            {source.source_url ? (
-              <a
-                href={source.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="font-medium hover:underline"
-                style={{ color: "#1F0954" }}
-              >
-                {source.title || formatSourceType(source.source_type)}
-              </a>
-            ) : (
-              <span>{source.title || formatSourceType(source.source_type)}</span>
-            )}
-          </div>
-        )}
-
-        {claim.support_excerpt ? (
-          <div className="mt-2 text-sm text-slate-500">
-            {claim.support_excerpt}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
+  const paragraphs = getStoryBackboneParagraphs(claims);
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">
       <h3 className="text-xl font-semibold text-slate-950">
-        Story skeleton
+        Story backbone
       </h3>
 
-      <div className="space-y-4">
-        <div>
-          <div className="mb-3 text-sm font-medium uppercase tracking-wide text-slate-500">
-            Lead
-          </div>
-          <div className="space-y-3">
-            {lead.length > 0 ? lead.map(renderClaimRow) : (
-              <div className="text-sm text-slate-500">No lead claims yet.</div>
-            )}
-          </div>
-        </div>
+      <div className="space-y-5">
+        {paragraphs.length > 0 ? (
+          paragraphs.map((section, index) => {
+            const sectionSources = getSourcesForClaims(section.claims, sources);
 
-        <div>
-          <div className="mb-3 text-sm font-medium uppercase tracking-wide text-slate-500">
-            Key support
-          </div>
-          <div className="space-y-3">
-            {support.length > 0 ? support.map(renderClaimRow) : (
-              <div className="text-sm text-slate-500">No supporting claims yet.</div>
-            )}
-          </div>
-        </div>
+            return (
+              <div
+                key={`${section.label}-${index}`}
+                className="rounded-2xl border border-slate-200 p-5"
+              >
+                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {section.label}
+                </div>
 
-        <div>
-          <div className="mb-3 text-sm font-medium uppercase tracking-wide text-slate-500">
-            Context
+                <div className="text-[15px] leading-[1.5] text-slate-800">
+                  {section.text}
+                </div>
+
+                {sectionSources.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {sectionSources.map((source) => (
+                      <a
+                        key={source.id}
+                        href={source.source_url || "#"}
+                        target={source.source_url ? "_blank" : undefined}
+                        rel={source.source_url ? "noreferrer" : undefined}
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 hover:bg-slate-200"
+                        style={{
+                          pointerEvents: source.source_url ? "auto" : "none",
+                          opacity: source.source_url ? 1 : 0.7,
+                        }}
+                      >
+                        {source.title || formatSourceType(source.source_type)}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="text-sm text-slate-500">
+            No structured backbone available yet.
           </div>
-          <div className="space-y-3">
-            {context.length > 0 ? context.map(renderClaimRow) : (
-              <div className="text-sm text-slate-500">No context claims yet.</div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -294,6 +279,8 @@ export default function OctiqEditorialDashboard() {
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [deletingCluster, setDeletingCluster] = useState(false);
   const [mergingCluster, setMergingCluster] = useState(false); 
+
+  const [showRenderedPreview, setShowRenderedPreview] = useState(false);
 
   const [clusterOptions, setClusterOptions] = useState<
    Array<{ id: string; title: string }>
@@ -540,10 +527,11 @@ const res = await fetch(url);
   }, [tab, publishableStories, dashboardOnlyStories, selectedStoryId]);
 
   useEffect(() => {
-    if (selectedStoryId) {
-      loadStory(selectedStoryId);
-    }
-  }, [selectedStoryId]);
+  if (selectedStoryId) {
+    setShowRenderedPreview(false);
+    loadStory(selectedStoryId);
+  }
+}, [selectedStoryId]);
 
   const updateEditorialStatus = async (
     storyId: string,
@@ -588,6 +576,7 @@ const res = await fetch(url);
       await loadDashboard();
       await loadClusterOptions();
       await loadStory(selectedStory.story_cluster.id);
+      setShowRenderedPreview(true);
       setSuccess("Publishable review render generated.");
     } catch (err: any) {
       setError(err.message || "Failed to render story");
@@ -1036,13 +1025,13 @@ const res = await fetch(url);
 
                     {tab === "dashboard" && (
                       <div className="text-slate-600">
-                        This story will render only after it is marked publishable.
+                        This view shows the story backbone as copy organized in inverted-pyramid order.
                       </div>
                     )}
 
-                    {tab === "dashboard" && (
+                    {tab === "publishable" && (
                       <div className="text-slate-600">
-                        This view shows the structured backbone of the story, not a user render.
+                        This view shows the story backbone first. Use “Render full review version” to preview the editorial-profile article below.
                       </div>
                     )}
 
@@ -1064,34 +1053,9 @@ const res = await fetch(url);
                     </div>
                   )}
 
-                  {tab === "publishable" && (
-                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                      <h3 className="text-xl font-semibold text-slate-950">
-                        Continue Building
-                      </h3>
-                      <p className="text-sm text-slate-600">
-                        If this is not ready, add a note for what should be improved and move it back to the dashboard.
-                      </p>
-                      <textarea
-                        value={continueNote}
-                        onChange={(e) => setContinueNote(e.target.value)}
-                        rows={5}
-                        placeholder="Leave editorial notes here..."
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                      />
-                      <button
-                        onClick={continueBuilding}
-                        disabled={publishing}
-                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {publishing ? "Updating..." : "Continue Building"}
-                      </button>
-                    </div>
-                  )}
-
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
                     <div className="space-y-6">
-                      <StorySkeletonView
+                      <StoryBackboneView
                         claims={selectedStory.claims}
                         sources={selectedStory.sources}
                       />
@@ -1099,6 +1063,38 @@ const res = await fetch(url);
                         <h3 className="text-xl font-semibold text-slate-950">
                           Sources attached
                         </h3>
+
+                        {tab === "publishable" && showRenderedPreview && (
+                          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                            <h3 className="text-xl font-semibold text-slate-950">
+                              Rendered review version
+                            </h3>
+
+                            {selectedStory.latest_render ? (
+                              <>
+                                {selectedStory.latest_render.headline && (
+                                  <h4 className="text-2xl font-semibold leading-[1.2] text-slate-950">
+                                    {selectedStory.latest_render.headline}
+                                  </h4>
+                                )}
+
+                                {selectedStory.latest_render.summary && (
+                                  <p className="text-lg text-slate-700">
+                                    {selectedStory.latest_render.summary}
+                                  </p>
+                                )}
+
+                                <div className="whitespace-pre-wrap text-slate-800 leading-[1.5]">
+                                  {selectedStory.latest_render.body || "No rendered body yet."}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-slate-600">
+                                No rendered article available yet.
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div className="space-y-3">
                           {selectedStory.sources.map((source) => (
@@ -1474,6 +1470,30 @@ const res = await fetch(url);
             )}
           </div>
         )}
+        {tab === "publishable" && (
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                      <h3 className="text-xl font-semibold text-slate-950">
+                        Continue Building
+                      </h3>
+                      <p className="text-sm text-slate-600">
+                        If this is not ready, add a note for what should be improved and move it back to the dashboard.
+                      </p>
+                      <textarea
+                        value={continueNote}
+                        onChange={(e) => setContinueNote(e.target.value)}
+                        rows={5}
+                        placeholder="Leave editorial notes here..."
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                      />
+                      <button
+                        onClick={continueBuilding}
+                        disabled={publishing}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {publishing ? "Updating..." : "Continue Building"}
+                      </button>
+                    </div>
+                  )}
       </div>
     </main>
   );
