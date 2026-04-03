@@ -144,9 +144,9 @@ function getStoryBackboneParagraphs(claims: Claim[]) {
     .sort((a, b) => (a.story_order || 999) - (b.story_order || 999));
 
   const lead = ordered.slice(0, 2);
-  const support = ordered.slice(2, 5);
-  const context = ordered.slice(5, 8);
-  const tail = ordered.slice(8);
+  const nutGraf = ordered.slice(2, 4);
+  const keyReporting = ordered.slice(4, 8);
+  const context = ordered.slice(8, 12);
 
   const buildParagraph = (items: Claim[]) =>
     items
@@ -156,9 +156,9 @@ function getStoryBackboneParagraphs(claims: Claim[]) {
 
   return [
     { label: "Lead", claims: lead, text: buildParagraph(lead) },
-    { label: "Support", claims: support, text: buildParagraph(support) },
-    { label: "Context", claims: context, text: buildParagraph(context) },
-    { label: "Tail", claims: tail, text: buildParagraph(tail) },
+    { label: "Nut graf", claims: nutGraf, text: buildParagraph(nutGraf) },
+    { label: "Key reporting", claims: keyReporting, text: buildParagraph(keyReporting) },
+    { label: "Context / background", claims: context, text: buildParagraph(context) },
   ].filter((section) => section.claims.length > 0 && section.text.trim());
 }
 
