@@ -1023,12 +1023,6 @@ const res = await fetch(url);
                       </div>
                     )}
 
-                    {tab === "dashboard" && (
-                      <div className="text-slate-600">
-                        This view shows the story backbone as copy organized in inverted-pyramid order.
-                      </div>
-                    )}
-
                     {tab === "publishable" && (
                       <div className="text-slate-600">
                         This view shows the structured backbone of the story. Use “Render full review version” only when you want to preview the editorial-profile article.
@@ -1089,30 +1083,6 @@ const res = await fetch(url);
                             )}
                           </div>
                         )}
-        {tab === "publishable" && (
-                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                      <h3 className="text-xl font-semibold text-slate-950">
-                        Continue Building
-                      </h3>
-                      <p className="text-sm text-slate-600">
-                        If this is not ready, add a note for what should be improved and move it back to the dashboard.
-                      </p>
-                      <textarea
-                        value={continueNote}
-                        onChange={(e) => setContinueNote(e.target.value)}
-                        rows={5}
-                        placeholder="Leave editorial notes here..."
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                      />
-                      <button
-                        onClick={continueBuilding}
-                        disabled={publishing}
-                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {publishing ? "Updating..." : "Continue Building"}
-                      </button>
-                    </div>
-                  )}
                         <div className="space-y-3">
                           {selectedStory.sources.map((source) => (
                             <div
@@ -1228,7 +1198,31 @@ const res = await fetch(url);
             </section>
           </div>
         )}
-
+{tab === "publishable" && (
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                      <h3 className="text-xl font-semibold text-slate-950">
+                        Continue Building
+                      </h3>
+                      <p className="text-sm text-slate-600">
+                        If this is not ready, add a note for what should be improved and move it back to the dashboard.
+                      </p>
+                      <textarea
+                        value={continueNote}
+                        onChange={(e) => setContinueNote(e.target.value)}
+                        rows={5}
+                        placeholder="Leave editorial notes here..."
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                      />
+                      <button
+                        onClick={continueBuilding}
+                        disabled={publishing}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {publishing ? "Updating..." : "Continue Building"}
+                      </button>
+                    </div>
+                  )}
+                  
         {tab === "ingest" && (
           <div className="mx-auto max-w-4xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">
             <div>
