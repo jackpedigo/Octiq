@@ -48,54 +48,40 @@ function formatSourceType(type: string) {
     .join(" ");
 }
 
-function hasAttributionCue(text: string) {
-  const lower = text.toLowerCase();
+function splitWithAttributionSpans(text: string) {
+  const pattern =
+    /“[^”]+”|"[^"]+"|according to [^,.]+|[^,.]+ said|[^,.]+ posted on X|[^,.]+ wrote on X|according to court records|according to a filing|according to documents?/gi;
 
-  return (
-    lower.includes("according to") ||
-    lower.includes("said") ||
-    lower.includes("told") ||
-    lower.includes("wrote on x") ||
-    lower.includes("posted on x") ||
-    lower.includes("in a statement") ||
-    lower.includes("according to a") ||
-    lower.includes("records show") ||
-    lower.includes("court filing") ||
-    lower.includes("document") ||
-    lower.includes('"')
-  );
-}
+  const parts: Array<{ text: string; attributed: boolean }> = [];
+  let lastIndex = 0;
 
-function normalizeText(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[“”"']/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    const matchedText = match[0];
 
-function splitIntoSentences(text: string) {
-  if (!text.trim()) return [];
-  return text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)?.map((s) => s.trim()) || [];
-}
+    if (start > lastIndex) {
+      parts.push({
+        text: text.slice(lastIndex, start),
+        attributed: false,
+      });
+    }
 
-function getWordSet(text: string) {
-  return new Set(normalizeText(text).split(" ").filter(Boolean));
-}
+    parts.push({
+      text: matchedText,
+      attributed: true,
+    });
 
-function getOverlapScore(a: string, b: string) {
-  const aWords = getWordSet(a);
-  const bWords = getWordSet(b);
-
-  if (aWords.size === 0 || bWords.size === 0) return 0;
-
-  let overlap = 0;
-  for (const word of aWords) {
-    if (bWords.has(word)) overlap += 1;
+    lastIndex = start + matchedText.length;
   }
 
-  return overlap / Math.max(aWords.size, 1);
+  if (lastIndex < text.length) {
+    parts.push({
+      text: text.slice(lastIndex),
+      attributed: false,
+    });
+  }
+
+  return parts;
 }
 
 function ClaimHover({
@@ -150,67 +136,6 @@ function ClaimHover({
   );
 }
 
-function buildBodySegments(body: string, claims: Claim[], sources: Source[]) {
-  if (!body) return [<span key="empty">No body available yet.</span>];
-
-  const sentences = splitIntoSentences(body);
- 
-  return sentences.map((sentence, index) => {
-    let bestClaim: Claim | undefined;
-    let bestSource: Source | undefined;
-    let bestScore = 0;
-
-    for (const claim of claims) {
-      const source = sources.find((s) => s.id === claim.source_id);
-
-      if (!hasAttributionCue(sentence)) {
-        return (
-          <span key={`sentence-${index}`}>
-            <span>{sentence}</span>{" "}
-          </span>
-        );
-      }
-
-      // never link octiq copy
-      if (!source || source.source_type === "octiq_copy") continue;
-
-      const comparisonTexts = [
-        claim.normalized_claim_text,
-        claim.claim_text,
-        claim.support_excerpt,
-      ].filter(Boolean) as string[];
-
-      for (const comparisonText of comparisonTexts) {
-        const score = getOverlapScore(sentence, comparisonText);
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestClaim = claim;
-          bestSource = source;
-        }
-      }
-    }
-    
-    // threshold: only link if sentence meaningfully overlaps
-    const shouldLink = bestClaim && bestSource && bestScore >= 0.28;
-
-    return (
-      <span key={`sentence-${index}`}>
-        {shouldLink ? (
-          <ClaimHover
-            text={sentence}
-            source={bestSource}
-            claim={bestClaim}
-          />
-        ) : (
-          <span>{sentence}</span>
-        )}
-        {" "}
-      </span>
-    );
-  });
-}
-
 export default function StoryPageClient({
   storyId,
   userId,
@@ -218,7 +143,6 @@ export default function StoryPageClient({
   storyId: string;
   userId: string;
 }) {
-
   const [story, setStory] = useState<StoryData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -231,7 +155,9 @@ export default function StoryPageClient({
     ).catch(() => {});
 
     const res = await fetch(
-      `${API_BASE}/stories/${storyId}?user_profile_id=${encodeURIComponent(userId)}`
+      `${API_BASE}/stories/${storyId}?user_profile_id=${encodeURIComponent(
+        userId
+      )}`
     );
     const data = await res.json();
 
@@ -243,21 +169,78 @@ export default function StoryPageClient({
     loadStory();
   }, [storyId]);
 
-  const renderBody = useMemo(() => {
+  const renderedBody = useMemo(() => {
     if (!story?.latest_render?.body) return null;
 
-    let text = story.latest_render.body;
+    const paragraphs = story.latest_render.body.split("\n").filter(Boolean);
 
-    return text.split("\n").map((p, i) => (
-      <p key={i} className="mb-4">
-        {p}
-      </p>
-    ));
+    return paragraphs.map((paragraph, paragraphIndex) => {
+      const parts = splitWithAttributionSpans(paragraph);
+
+      return (
+        <p key={paragraphIndex} className="mb-4">
+          {parts.map((part, partIndex) => {
+            if (!part.attributed) {
+              return <span key={partIndex}>{part.text}</span>;
+            }
+
+            const candidateSource =
+              story.sources.find(
+                (s) => s.source_type !== "octiq_copy" && s.source_url
+              ) || story.sources.find((s) => s.source_type !== "octiq_copy");
+
+            if (!candidateSource) {
+              return <span key={partIndex}>{part.text}</span>;
+            }
+
+            return (
+              <ClaimHover
+                key={partIndex}
+                text={part.text}
+                source={candidateSource}
+              />
+            );
+          })}
+        </p>
+      );
+    });
   }, [story]);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) {
+    return (
+      <main
+        className="min-h-screen px-6 py-8"
+        style={{
+          backgroundColor: "#f3f6fa",
+          fontFamily: "Helvetica, Arial, sans-serif",
+        }}
+      >
+        <div className="mx-auto max-w-5xl">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm">
+            Loading story...
+          </div>
+        </div>
+      </main>
+    );
+  }
 
-  if (!story) return <div>Story not found</div>;
+  if (!story) {
+    return (
+      <main
+        className="min-h-screen px-6 py-8"
+        style={{
+          backgroundColor: "#f3f6fa",
+          fontFamily: "Helvetica, Arial, sans-serif",
+        }}
+      >
+        <div className="mx-auto max-w-5xl">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm">
+            Story not found.
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main
@@ -269,44 +252,55 @@ export default function StoryPageClient({
     >
       <div className="mx-auto max-w-5xl space-y-6">
         <div
-          className="rounded-[28px] px-6 py-5 shadow"
+          className="rounded-[28px] px-6 py-5 shadow-[0_14px_34px_rgba(31,9,84,0.18)]"
           style={{ backgroundColor: "#1F0954" }}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <Link
-              href={`/reader?user=${userId}`}
-              className="bg-white px-4 py-2 rounded-full"
+              href={userId ? `/reader?user=${userId}` : "/reader"}
+              className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100"
             >
               Back
             </Link>
 
             <img
               src="/octiq-news-logo.png"
-              className="h-20 object-contain"
+              alt="OCTIQ News"
+              className="h-20 object-contain md:h-24"
             />
 
             <Link
-              href={`/reader/profile?user=${userId}`}
-              className="bg-white px-4 py-2 rounded-full"
+              href={userId ? `/reader/profile?user=${userId}` : "/reader/profile"}
+              className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-100"
             >
               Profile
             </Link>
           </div>
         </div>
 
-        <article className="bg-white p-8 rounded-3xl shadow">
-          <h1 className="text-4xl font-bold mb-6">
-            {story.latest_render?.headline}
+        <article className="rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm space-y-6">
+          <h1 className="text-4xl font-bold leading-[1.15] text-slate-950">
+            {story.latest_render?.headline || story.story_cluster.title}
           </h1>
 
           {story.story_cluster.image_url && (
-            <img
-              src={story.story_cluster.image_url}
-              className="w-full mb-4 rounded-2xl"
-            />
+            <div className="space-y-2">
+              <img
+                src={story.story_cluster.image_url}
+                alt={story.latest_render?.headline || story.story_cluster.title}
+                className="w-full rounded-2xl object-cover"
+              />
+              {story.story_cluster.image_attribution && (
+                <div className="text-xs text-slate-500">
+                  {story.story_cluster.image_attribution}
+                </div>
+              )}
+            </div>
           )}
 
-          <div className="text-lg leading-[1.15]">{renderBody}</div>
+          <div className="text-[17px] leading-[1.6] text-slate-800">
+            {renderedBody}
+          </div>
         </article>
       </div>
     </main>

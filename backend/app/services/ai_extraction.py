@@ -287,15 +287,17 @@ def render_story_from_cluster_and_profile(cluster, claims, profile):
     })
 
     prompt = f"""
-You are writing a source-grounded news article for a specific user.
+You are writing a source-grounded straight-news article for a specific user.
 
-Your job is to write a clean, publishable news story using ONLY the story metadata and claims below.
+Your job is to write copy that reads like a strong filed story from a serious newsroom: clear, restrained, concrete, and publication-ready.
 
+Use ONLY the story metadata and claims below.
 Do not add facts not supported by the claims.
-Do not overwrite source-grounded meaning unless the claims justify it.
-Do not speculate, infer motives, infer significance, or add background unless it is directly supported by the provided claims.
-
-The article must still reflect the user's preferences, including depth, vocabulary, evidence visibility, and interests when relevant and supported by the claims.
+Do not speculate.
+Do not infer motives, causes, trend lines, or implications unless they are directly supported by the claims.
+Do not inject unattributed opinion.
+Do not write like an explainer, memo, synthesis note, analyst brief, or AI summary.
+Write the article itself.
 
 USER PREFERENCES
 - Depth preference: {profile.get("depth_preference", "standard")}
@@ -317,72 +319,111 @@ STORY METADATA
 CLAIMS
 {claims_text}
 
-CORE WRITING GOAL
-Write this like a strong straight-news story that could be filed to an editor at a serious newsroom.
-It should read like the article itself, not like a memo, synthesis, explainer scaffold, analyst brief, or structured summary.
+CORE NEWSROOM STANDARD
+Write in a way that is:
+- accurate
+- fair
+- direct
+- concise
+- readable
+- structurally disciplined
+- free of hype
+- free of filler
+- free of AI voice
 
-NEWSROOM STYLE RULES
-- Write in normal news prose.
-- Use the inverted pyramid structure.
-- Start with the most important and best-supported development.
-- Follow with the strongest supporting facts in descending order of importance.
-- Keep the story flowing naturally from paragraph to paragraph.
-- Do not segment the article into named sections.
-- Do not use labels such as "Lead," "Supporting claims," "Additional facts," or "Why it matters."
-- Do not write like an outline.
-- Do not write like a case summary.
-- Do not write like a briefing memo.
-- Favor concrete reporting over abstraction.
-- Use active voice where possible.
-- Keep paragraphs reasonably tight.
-- Use direct, restrained, reportorial language.
+The article must feel like filed reporting, not generated commentary.
 
-ATTRIBUTION RULES
-- Attribute information clearly, but naturally.
-- Do not repeat attribution formulaically in every sentence once the sourcing of a set of facts is already clear.
-- Avoid repetitive phrasing such as "according to investigators," "the bureau said," "authorities said," or similar in back-to-back sentences unless necessary.
-- Vary attribution naturally when needed.
-- If a claim comes from a quote, social post, interview, speech, or official statement, preserve attribution.
-- Do not convert attributed statements into unattributed facts.
-- If a direct quote is used, identify the speaker clearly.
+INVERTED PYRAMID REQUIREMENT
+- Open with the most important, best-supported development.
+- Put the strongest verified facts highest in the story.
+- Follow with the most important supporting details.
+- Then add relevant context and secondary details.
+- End cleanly, without trailing off into vague commentary.
+
+NUT GRAF REQUIREMENT
+- Within the first 3 to 5 paragraphs, make clear why the development matters in context.
+- This should read like a natural nut graf in a news story, not like an analysis section or “why it matters” box.
+- If the significance is not sufficiently supported by the claims, do not force it.
+
+ATTRIBUTION DISCIPLINE
+- Attribute information clearly, but do not over-attribute every sentence.
+- Once a paragraph’s sourcing is established, continue naturally unless a new attribution is required.
+- Avoid repetitive structures such as:
+  “X said ...”
+  “Y said ...”
+  “Z said ...”
+  in consecutive sentences.
+- Consolidate attribution when appropriate.
+- Preserve attribution for quotes, interviews, speeches, social posts, statements, filings, records, and documents.
+- Do not turn attributed claims into unattributed facts.
 
 QUOTE RULES
-- Use only the strongest or most necessary quotes.
-- Do not stack multiple quotes when paraphrased reporting would be cleaner.
-- Preserve direct quotes when they are important and supported by the claims.
-- Do not paraphrase quotes in a misleading way.
+- Prefer direct quotes when they materially strengthen the reporting.
+- Use quotes when they add authority, specificity, or voice that paraphrase would weaken.
+- Preserve exact wording when the claims support it.
+- Do not use quotes merely for decoration.
+- If a direct quote is clearly the strongest available reporting element, prefer it over paraphrase.
+- Identify the speaker clearly and naturally.
+- Do not stack multiple weak quotes when one strong quote will do.
+- Full sentence quotes must be their own separate paragraphs.
 
-STRUCTURE RULES
-- The story should feel like one continuous article.
-- Include a natural nut graf or significance paragraph only when supported by the claims.
-- Do not append a visible explainer section to the article body.
-- Any significance should be woven naturally into the article, especially in the middle or closing paragraphs.
-- If relevant user-interest-specific information is supported by the claims, weave it into the article naturally rather than separating it out.
-- User interests may shape emphasis only when relevant and supported by the claims. They must never change the underlying facts.
-
-EDITORIAL RULES
-- Generate the headline from the most important and best-supported development in the claims, not necessarily the cluster title.
-- Only include information directly supported by the provided claims.
-- Do not infer causes, motivations, wider implications, trend lines, or political meaning unless explicitly supported.
-- Do not introduce broad framing unless it is justified by the source material.
-- Do not over-explain the reporting process itself unless that process is genuinely newsworthy.
-- Avoid bureaucratic or legalistic phrasing when simpler news language would do.
+STYLE RULES
+- Prefer short, declarative sentences.
+- Prefer concrete reporting over abstract framing.
+- Use active voice where possible.
+- Keep paragraphs tight.
+- Avoid bureaucratic, legalistic, and inflated phrasing where simpler news language works.
+- Avoid throat-clearing.
+- Avoid scene-setting unless it materially advances the reporting.
+- Do not use section headers.
+- Do not write “Lead,” “Support,” “Context,” “Why it matters,” or any other labels.
+- Do not use bullet points.
 - Do not use em dashes.
+- When a quote is genuinely ontributive or core to the story, prefer using the direct quote to a claim or summary about it.
 
-TONE CALIBRATION
-- The prose should feel human, restrained, and reportorial.
-- It should sound like a filed article draft, not like ChatGPT explaining the news.
-- It should not sound inflated, academic, or overly systematic.
-- It should not sound like it is summarizing documents for a user.
-- It should sound like the article itself.
+TONE RULES
+- Sound like a skilled reporter writing for an editor.
+- Do not sound impressed by the material.
+- Do not sound academic.
+- Do not sound like you are explaining the article to the user.
+- Do not sound like you are summarizing source packets.
+- Do not sound like a chatbot.
+- Do not use vague newsroom cliches like “raises questions,” “underscores,” “spotlights,” or “comes as” unless they are clearly the cleanest phrasing and directly supported.
 
-LENGTH RULES
-- If the claims support a full story, write a full coherent article.
-- If the claims support only a brief, write a shorter but still natural article.
-- Do not pad the story with unsupported context.
-- Depth preference should affect how much context and connective explanation is included, but never at the expense of factual discipline.
+ANTI-AI VOICE RULES
+Avoid these common failure modes:
+- repetitive attribution
+- repetitive sentence openings
+- mechanical transitions
+- padded context
+- generic closing paragraphs
+- inflated language
+- obvious synthesis phrasing such as “according to the information provided”
+- analyst-style wording such as “this development suggests”
+- empty framing such as “the situation highlights”
 
-OUTPUT RULES
+USER-PREFERENCE CALIBRATION
+- User preferences may affect depth, tone, vocabulary, and emphasis.
+- User interests may shape emphasis only when supported by the claims.
+- User interests must never change the underlying facts, structure of verification, or meaning of the story.
+- If the user prefers deeper coverage, add more context and connective reporting, not fluff.
+- If the user prefers simpler language, simplify wording without flattening factual precision.
+
+ENDING RULE
+- End on a grounded, reportorial line.
+- Prefer a clean final fact, consequence, or unresolved reported point.
+- Do not end on vague observer reaction unless that reaction is itself clearly newsworthy.
+- Do not append a separate analysis section.
+
+HEADLINE RULE
+- Write a sharp, factual, newsworthy headline based on the strongest supported development.
+- The headline should sound like a real story headline, not a topic label or essay title.
+
+SUMMARY RULE
+- Write a 1-2 sentence deck-style summary in clean news language.
+- It should sound like display copy under a headline, not a recap memo.
+
+OUTPUT RULE
 Return valid JSON in exactly this shape:
 {{
   "headline": "string",
@@ -392,10 +433,10 @@ Return valid JSON in exactly this shape:
 }}
 
 FIELD RULES
-- headline: sharp, factual, and newsy
-- summary: 1-2 sentence deck-style summary in news language
-- body: the full article in flowing news prose with no section labels
-- why_it_matters: brief and restrained; write it like a concise nut graf, not like an analysis memo
+- headline: factual, tight, newsy
+- summary: short deck
+- body: full article in flowing newsroom prose
+- why_it_matters: brief and restrained; write this like an internal nut-graf-style summary, not like an opinion section
 """
 
     response = client.responses.create(

@@ -205,7 +205,7 @@ export default function ProfileClient({
         throw new Error(data.detail || "Failed to save profile");
       }
 
-      setSuccess("Profile updated successfully.");
+      setSuccess("Profile updated successfully. Your changes will be reflected in upcoming Octiq stories.");
     } catch (err: any) {
       setError(err.message || "Failed to save profile");
     } finally {

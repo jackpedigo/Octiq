@@ -282,6 +282,9 @@ export default function OctiqEditorialDashboard() {
 
   const [showRenderedPreview, setShowRenderedPreview] = useState(false);
 
+  const [heroImageUrl, setHeroImageUrl] = useState("");
+  const [heroImageAttribution, setHeroImageAttribution] = useState("");
+
   const [clusterOptions, setClusterOptions] = useState<
    Array<{ id: string; title: string }>
   >([]);
@@ -713,6 +716,23 @@ const res = await fetch(url);
       setIngestResult(data);
       setSuccess("Source ingested successfully.");
 
+      const resolvedStoryClusterId =
+  data.story_cluster_id ||
+  data.cluster_result?.story_cluster_id ||
+  data.cluster_result?.create_result?.story_cluster_id ||
+  data.cluster_result?.add_result?.story_cluster_id;
+
+if (resolvedStoryClusterId && (heroImageUrl.trim() || heroImageAttribution.trim())) {
+  await fetch(`${API_BASE}/stories/${resolvedStoryClusterId}/editorial-assets`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_url: heroImageUrl.trim() || null,
+      image_attribution: heroImageAttribution.trim() || null,
+    }),
+  });
+}
+
       if (data.story_cluster_id) {
         setStoryClusterId(data.story_cluster_id);
       }
@@ -921,7 +941,27 @@ const res = await fetch(url);
                             selectedStory.story_cluster.title ||
                             "Untitled story"}
                         </h2>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="space-y-2">
+                          <div className="text-sm font-medium">Hero image URL (optional)</div>
+                          <input
+                            value={heroImageUrl}
+                            onChange={(e) => setHeroImageUrl(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                            placeholder="https://..."
+                          />
+                        </label>
 
+                        <label className="space-y-2">
+                          <div className="text-sm font-medium">Image attribution (optional)</div>
+                          <input
+                            value={heroImageAttribution}
+                            onChange={(e) => setHeroImageAttribution(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                            placeholder="Photo by ..."
+                          />
+                        </label>
+                      </div>
                         <div className="flex flex-wrap gap-2 text-sm text-slate-600">
                           <span className="rounded-full bg-slate-100 px-3 py-1">
                             {selectedStory.story_cluster.editorial_status || "draft"}
@@ -987,6 +1027,61 @@ const res = await fetch(url);
                         )}
                       </div>
                     </div>
+{tab === "publishable" && showRenderedPreview && (
+                          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                            <h3 className="text-xl font-semibold text-slate-950">
+                              Rendered review version
+                            </h3>
+
+                            {selectedStory.latest_render ? (
+                              <>
+                                {selectedStory.latest_render.headline && (
+                                  <h4 className="text-2xl font-semibold leading-[1.2] text-slate-950">
+                                    {selectedStory.latest_render.headline}
+                                  </h4>
+                                )}
+
+                                {selectedStory.latest_render.summary && (
+                                  <p className="text-lg text-slate-700">
+                                    {selectedStory.latest_render.summary}
+                                  </p>
+                                )}
+
+                                <div className="whitespace-pre-wrap text-slate-800 leading-[1.5]">
+                                  {selectedStory.latest_render.body || "No rendered body yet."}
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-slate-600">
+                                No rendered article available yet.
+                              </div>
+                            )}
+                          </div>
+                        )}
+          {tab === "publishable" && (
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                      <h3 className="text-xl font-semibold text-slate-950">
+                        Continue Building
+                      </h3>
+                      <p className="text-sm text-slate-600">
+                        If this is not ready, add a note for what should be improved and move it back to the dashboard.
+                      </p>
+                      <textarea
+                        value={continueNote}
+                        onChange={(e) => setContinueNote(e.target.value)}
+                        rows={5}
+                        placeholder="Leave editorial notes here..."
+                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                      />
+                      <button
+                        onClick={continueBuilding}
+                        disabled={publishing}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {publishing ? "Updating..." : "Continue Building"}
+                      </button>
+                    </div>
+                  )}
 
                     {tab === "dashboard" && selectedStory && (
                       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
@@ -1052,37 +1147,6 @@ const res = await fetch(url);
                           Sources attached
                         </h3>
 
-                        {tab === "publishable" && showRenderedPreview && (
-                          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                            <h3 className="text-xl font-semibold text-slate-950">
-                              Rendered review version
-                            </h3>
-
-                            {selectedStory.latest_render ? (
-                              <>
-                                {selectedStory.latest_render.headline && (
-                                  <h4 className="text-2xl font-semibold leading-[1.2] text-slate-950">
-                                    {selectedStory.latest_render.headline}
-                                  </h4>
-                                )}
-
-                                {selectedStory.latest_render.summary && (
-                                  <p className="text-lg text-slate-700">
-                                    {selectedStory.latest_render.summary}
-                                  </p>
-                                )}
-
-                                <div className="whitespace-pre-wrap text-slate-800 leading-[1.5]">
-                                  {selectedStory.latest_render.body || "No rendered body yet."}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="text-slate-600">
-                                No rendered article available yet.
-                              </div>
-                            )}
-                          </div>
-                        )}
                         <div className="space-y-3">
                           {selectedStory.sources.map((source) => (
                             <div
@@ -1198,30 +1262,6 @@ const res = await fetch(url);
             </section>
           </div>
         )}
-{tab === "publishable" && (
-                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                      <h3 className="text-xl font-semibold text-slate-950">
-                        Continue Building
-                      </h3>
-                      <p className="text-sm text-slate-600">
-                        If this is not ready, add a note for what should be improved and move it back to the dashboard.
-                      </p>
-                      <textarea
-                        value={continueNote}
-                        onChange={(e) => setContinueNote(e.target.value)}
-                        rows={5}
-                        placeholder="Leave editorial notes here..."
-                        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                      />
-                      <button
-                        onClick={continueBuilding}
-                        disabled={publishing}
-                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                      >
-                        {publishing ? "Updating..." : "Continue Building"}
-                      </button>
-                    </div>
-                  )}
                   
         {tab === "ingest" && (
           <div className="mx-auto max-w-4xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">

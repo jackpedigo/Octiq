@@ -19,6 +19,10 @@ class StoryEditorialUpdate(BaseModel):
 
 class MergeStoryClusterRequest(BaseModel):
     target_story_cluster_id: str
+
+class StoryEditorialAssetsUpdate(BaseModel):
+    image_url: Optional[str] = None
+    image_attribution: Optional[str] = None
     
 def create_story_cluster_from_source(source_id: str):
     source_response = (
@@ -133,6 +137,54 @@ def create_story_cluster_from_source(source_id: str):
         "content_updated_at": story_cluster.get("content_updated_at"),
     }
 
+def refresh_story_cluster_metadata(story_cluster_id: str):
+    source_links_response = (
+        supabase.table("story_sources")
+        .select("source_id")
+        .eq("story_cluster_id", story_cluster_id)
+        .execute()
+    )
+
+    source_ids = [row["source_id"] for row in source_links_response.data] if source_links_response.data else []
+    if not source_ids:
+        return None
+
+    sources_response = (
+        supabase.table("sources")
+        .select("*")
+        .in_("id", source_ids)
+        .execute()
+    )
+
+    sources = sources_response.data or []
+    if not sources:
+        return None
+
+    canonical_source = next(
+        (s for s in sources if s.get("source_type") == "octiq_copy"),
+        sources[0]
+    )
+
+    story_fields = extract_story_fields_from_source(canonical_source)
+
+    updated = (
+        supabase.table("story_clusters")
+        .update({
+            "title": story_fields.get("title") or canonical_source.get("title") or "Untitled story",
+            "top_line": story_fields.get("summary_seed") or story_fields.get("title") or canonical_source.get("title") or "Untitled story",
+            "main_issue": story_fields.get("main_issue"),
+            "event_type": story_fields.get("event_type"),
+            "location": story_fields.get("location"),
+            "date_reference": story_fields.get("date_reference"),
+            "summary_seed": story_fields.get("summary_seed"),
+            "interest_tags": story_fields.get("interest_tags", []),
+            "content_updated_at": datetime.utcnow().isoformat(),
+        })
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    return updated.data[0] if updated.data else None
 
 def add_source_to_story_cluster(story_cluster_id: str, source_id: str):
     cluster_response = (
@@ -254,12 +306,15 @@ def add_source_to_story_cluster(story_cluster_id: str, source_id: str):
         }
     ).eq("id", story_cluster_id).execute()
 
+    updated_cluster = refresh_story_cluster_metadata(story_cluster_id)
+
     return {
         "story_cluster_id": story_cluster_id,
         "source_id": source_id,
         "claims_found_in_source": len(source_claims),
         "claims_added_to_cluster": added_count,
         "claims_skipped": skipped_count,
+        "updated_cluster": updated_cluster,
     }
 
 
@@ -1085,3 +1140,40 @@ def render_if_needed(story_cluster_id: str, user_profile_id: str):
     )
 
     return insert.data[0]
+
+@router.patch("/stories/{story_cluster_id}/editorial-assets")
+def update_story_editorial_assets(story_cluster_id: str, payload: StoryEditorialAssetsUpdate):
+    cluster_response = (
+        supabase.table("story_clusters")
+        .select("*")
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    if not cluster_response.data:
+        raise HTTPException(status_code=404, detail="Story cluster not found")
+
+    updates = {}
+
+    if payload.image_url is not None:
+        updates["image_url"] = payload.image_url
+
+    if payload.image_attribution is not None:
+        updates["image_attribution"] = payload.image_attribution
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No asset fields provided")
+
+    updates["content_updated_at"] = datetime.utcnow().isoformat()
+
+    updated = (
+        supabase.table("story_clusters")
+        .update(updates)
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    return {
+        "message": "Story editorial assets updated",
+        "story_cluster": updated.data[0],
+    }
