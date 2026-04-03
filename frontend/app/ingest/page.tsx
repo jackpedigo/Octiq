@@ -187,7 +187,7 @@ function StoryBackboneView({
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">
       <h3 className="text-xl font-semibold text-slate-950">
-        Story backbone
+        Editorial structure
       </h3>
 
       <div className="space-y-5">
@@ -200,11 +200,11 @@ function StoryBackboneView({
                 key={`${section.label}-${index}`}
                 className="rounded-2xl border border-slate-200 p-5"
               >
-                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                   {section.label}
                 </div>
 
-                <div className="text-[15px] leading-[1.5] text-slate-800">
+                <div className="text-[15px] leading-[1.6] text-slate-800">
                   {section.text}
                 </div>
 
