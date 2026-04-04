@@ -682,6 +682,7 @@ def get_story(story_cluster_id: str, user_profile_id: str | None = None):
         "story_cluster": cluster,
         "sources": sources,
         "claims": claims,
+        "editorial_structure": cluster.get("editorial_structure_json"),
         "latest_render": latest_render,
     }
 
