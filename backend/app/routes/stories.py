@@ -1195,9 +1195,20 @@ def render_if_needed(story_cluster_id: str, user_profile_id: str):
     if not profile_response.data:
         raise HTTPException(status_code=404, detail="User profile not found")
 
-    profile = profile_response.data[0]
-    rendered = render_story_from_cluster_and_profile(cluster, claims, profile)
+    profile = supabase.table("user_profiles").select("*").eq("id", user_profile_id).execute().data[0]
 
+    if not cluster.get("editorial_structure_json"):
+        build_and_store_editorial_structure(story_cluster_id)
+
+        cluster = (
+            supabase.table("story_clusters")
+            .select("*")
+            .eq("id", story_cluster_id)
+            .execute()
+            .data[0]
+        )
+
+    rendered = render_story_from_cluster_and_profile(cluster, claims, profile)
     insert = (
         supabase.table("story_renders")
         .insert(

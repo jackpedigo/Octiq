@@ -470,18 +470,96 @@ QUALITY BAR
             detail=f"Model did not return valid JSON for editorial structure: {output_text}"
         )
 
-def render_story_from_cluster_and_profile(cluster, claims, profile):
+def get_profile_interests(profile: dict) -> list[str]:
     interests = profile.get("interests") or []
     if isinstance(interests, str):
         interests = [interests]
+    return interests
 
-    claims_text = "\n".join(
-        [
-            f"- {c.get('normalized_claim_text') or c.get('claim_text')}"
-            for c in claims
-            if c.get("normalized_claim_text") or c.get("claim_text")
-        ]
-    )
+
+def select_editorial_modules_for_profile(editorial_structure: dict, profile: dict) -> list[dict]:
+    modules = editorial_structure.get("modules") or []
+    render_rules = editorial_structure.get("render_rules") or {}
+
+    depth = profile.get("depth_preference", "standard")
+    interests = set(get_profile_interests(profile))
+
+    must_include_roles = set(render_rules.get("must_include_roles") or [])
+
+    if depth == "quick":
+        optional_roles = set(render_rules.get("quick_optional_roles") or [])
+    elif depth == "deep":
+        optional_roles = set(render_rules.get("deep_optional_roles") or [])
+    else:
+        optional_roles = set(render_rules.get("standard_optional_roles") or [])
+
+    selected = []
+
+    for module in modules:
+        role = module.get("role")
+        required = module.get("required", False)
+        depth_eligibility = set(module.get("depth_eligibility") or [])
+        module_interests = set(module.get("interest_tags") or [])
+
+        if depth_eligibility and depth not in depth_eligibility:
+            continue
+
+        include = False
+
+        if required or role in must_include_roles:
+            include = True
+        elif role in optional_roles:
+            include = True
+        elif interests and module_interests.intersection(interests):
+            include = True
+
+        if include:
+            selected.append(module)
+
+    # preserve editorial hierarchy by priority descending
+    selected.sort(key=lambda m: m.get("priority", 0), reverse=True)
+    return selected
+
+
+def select_quotes_for_profile(editorial_structure: dict, profile: dict, selected_modules: list[dict]) -> list[dict]:
+    quote_bank = editorial_structure.get("quote_bank") or []
+    depth = profile.get("depth_preference", "standard")
+
+    render_rules = editorial_structure.get("render_rules") or {}
+    if depth == "quick":
+        max_quotes = render_rules.get("max_quotes_quick", 1)
+    elif depth == "deep":
+        max_quotes = render_rules.get("max_quotes_deep", 3)
+    else:
+        max_quotes = render_rules.get("max_quotes_standard", 2)
+
+    selected_roles = {m.get("role") for m in selected_modules}
+
+    eligible_quotes = [
+        q for q in quote_bank
+        if set(q.get("usable_roles") or []).intersection(selected_roles)
+    ]
+
+    eligible_quotes.sort(key=lambda q: q.get("priority", 0), reverse=True)
+    return eligible_quotes[:max_quotes]
+
+
+def build_structure_render_payload(editorial_structure: dict, profile: dict) -> dict:
+    selected_modules = select_editorial_modules_for_profile(editorial_structure, profile)
+    selected_quotes = select_quotes_for_profile(editorial_structure, profile, selected_modules)
+
+    return {
+        "story_core": editorial_structure.get("story_core") or {},
+        "editorial_logic": editorial_structure.get("editorial_logic") or {},
+        "selected_modules": selected_modules,
+        "selected_quotes": selected_quotes,
+        "render_rules": editorial_structure.get("render_rules") or {},
+    }
+
+def render_story_from_cluster_and_profile(cluster: dict, claims: list[dict], profile: dict) -> dict:
+    interests = get_profile_interests(profile)
+
+    editorial_structure = cluster.get("editorial_structure_json") or {}
 
     render_instructions = build_render_instructions({
         "depth_preference": profile.get("depth_preference", "standard"),
@@ -490,18 +568,21 @@ def render_story_from_cluster_and_profile(cluster, claims, profile):
         "interests": interests,
     })
 
-    prompt = f"""
-You are writing a source-grounded straight-news article for a specific user.
+    # fallback for older clusters that do not yet have editorial structure
+    if not editorial_structure or not editorial_structure.get("modules"):
+        claims_text = "\n".join(
+            [
+                f"- {c.get('normalized_claim_text') or c.get('claim_text')}"
+                for c in claims
+                if c.get("normalized_claim_text") or c.get("claim_text")
+            ]
+        )
 
-Your job is to write copy that reads like a strong filed story from a serious newsroom: clear, restrained, concrete, and publication-ready.
+        prompt = f"""
+You are writing a source-grounded straight-news article for a specific user.
 
 Use ONLY the story metadata and claims below.
 Do not add facts not supported by the claims.
-Do not speculate.
-Do not infer motives, causes, trend lines, or implications unless they are directly supported by the claims.
-Do not inject unattributed opinion.
-Do not write like an explainer, memo, synthesis note, analyst brief, or AI summary.
-Write the article itself.
 
 USER PREFERENCES
 - Depth preference: {profile.get("depth_preference", "standard")}
@@ -523,111 +604,8 @@ STORY METADATA
 CLAIMS
 {claims_text}
 
-CORE NEWSROOM STANDARD
-Write in a way that is:
-- accurate
-- fair
-- direct
-- concise
-- readable
-- structurally disciplined
-- free of hype
-- free of filler
-- free of AI voice
-
-The article must feel like filed reporting, not generated commentary.
-
-INVERTED PYRAMID REQUIREMENT
-- Open with the most important, best-supported development.
-- Put the strongest verified facts highest in the story.
-- Follow with the most important supporting details.
-- Then add relevant context and secondary details.
-- End cleanly, without trailing off into vague commentary.
-
-NUT GRAF REQUIREMENT
-- Within the first 3 to 5 paragraphs, make clear why the development matters in context.
-- This should read like a natural nut graf in a news story, not like an analysis section or “why it matters” box.
-- If the significance is not sufficiently supported by the claims, do not force it.
-
-ATTRIBUTION DISCIPLINE
-- Attribute information clearly, but do not over-attribute every sentence.
-- Once a paragraph’s sourcing is established, continue naturally unless a new attribution is required.
-- Avoid repetitive structures such as:
-  “X said ...”
-  “Y said ...”
-  “Z said ...”
-  in consecutive sentences.
-- Consolidate attribution when appropriate.
-- Preserve attribution for quotes, interviews, speeches, social posts, statements, filings, records, and documents.
-- Do not turn attributed claims into unattributed facts.
-
-QUOTE RULES
-- Prefer direct quotes when they materially strengthen the reporting.
-- Use quotes when they add authority, specificity, or voice that paraphrase would weaken.
-- Preserve exact wording when the claims support it.
-- Do not use quotes merely for decoration.
-- If a direct quote is clearly the strongest available reporting element, prefer it over paraphrase.
-- Identify the speaker clearly and naturally.
-- Do not stack multiple weak quotes when one strong quote will do.
-- Full sentence quotes must be their own separate paragraphs.
-
-STYLE RULES
-- Prefer short, declarative sentences.
-- Prefer concrete reporting over abstract framing.
-- Use active voice where possible.
-- Keep paragraphs tight.
-- Avoid bureaucratic, legalistic, and inflated phrasing where simpler news language works.
-- Avoid throat-clearing.
-- Avoid scene-setting unless it materially advances the reporting.
-- Do not use section headers.
-- Do not write “Lead,” “Support,” “Context,” “Why it matters,” or any other labels.
-- Do not use bullet points.
-- Do not use em dashes.
-- When a quote is genuinely ontributive or core to the story, prefer using the direct quote to a claim or summary about it.
-
-TONE RULES
-- Sound like a skilled reporter writing for an editor.
-- Do not sound impressed by the material.
-- Do not sound academic.
-- Do not sound like you are explaining the article to the user.
-- Do not sound like you are summarizing source packets.
-- Do not sound like a chatbot.
-- Do not use vague newsroom cliches like “raises questions,” “underscores,” “spotlights,” or “comes as” unless they are clearly the cleanest phrasing and directly supported.
-
-ANTI-AI VOICE RULES
-Avoid these common failure modes:
-- repetitive attribution
-- repetitive sentence openings
-- mechanical transitions
-- padded context
-- generic closing paragraphs
-- inflated language
-- obvious synthesis phrasing such as “according to the information provided”
-- analyst-style wording such as “this development suggests”
-- empty framing such as “the situation highlights”
-
-USER-PREFERENCE CALIBRATION
-- User preferences may affect depth, tone, vocabulary, and emphasis.
-- User interests may shape emphasis only when supported by the claims.
-- User interests must never change the underlying facts, structure of verification, or meaning of the story.
-- If the user prefers deeper coverage, add more context and connective reporting, not fluff.
-- If the user prefers simpler language, simplify wording without flattening factual precision.
-
-ENDING RULE
-- End on a grounded, reportorial line.
-- Prefer a clean final fact, consequence, or unresolved reported point.
-- Do not end on vague observer reaction unless that reaction is itself clearly newsworthy.
-- Do not append a separate analysis section.
-
-HEADLINE RULE
-- Write a sharp, factual, newsworthy headline based on the strongest supported development.
-- The headline should sound like a real story headline, not a topic label or essay title.
-
-SUMMARY RULE
-- Write a 1-2 sentence deck-style summary in clean news language.
-- It should sound like display copy under a headline, not a recap memo.
-
-OUTPUT RULE
+Write a straight-news article in inverted-pyramid form.
+Use direct quotes when materially useful.
 Return valid JSON in exactly this shape:
 {{
   "headline": "string",
@@ -635,12 +613,87 @@ Return valid JSON in exactly this shape:
   "body": "string",
   "why_it_matters": "string"
 }}
+"""
+        response = client.responses.create(
+            model="gpt-5-mini",
+            input=prompt
+        )
 
-FIELD RULES
-- headline: factual, tight, newsy
-- summary: short deck
-- body: full article in flowing newsroom prose
-- why_it_matters: brief and restrained; write this like an internal nut-graf-style summary, not like an opinion section
+        output_text = _clean_json_output(response.output_text)
+
+        try:
+            parsed = json.loads(output_text)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail=f"Model did not return valid JSON: {output_text}")
+
+        return {
+            "headline": parsed.get("headline", cluster.get("title") or "Generated story"),
+            "summary": parsed.get("summary", ""),
+            "body": parsed.get("body", ""),
+            "why_it_matters": parsed.get("why_it_matters", ""),
+        }
+
+    structure_payload = build_structure_render_payload(editorial_structure, profile)
+
+    prompt = f"""
+You are writing a source-grounded straight-news article for a specific user.
+
+You are NOT writing from raw source material.
+You are writing from a pre-built editorial structure that represents the fullest justified newsroom understanding of the story.
+
+Your job is to produce a user-specific version of the article while preserving:
+- the underlying verified facts
+- the editorial logic of the story
+- the general role ordering of the selected modules
+- the attribution logic already built into the structure
+
+You may adjust:
+- article length
+- sentence density
+- vocabulary
+- how much optional context appears
+- whether selected quote modules are surfaced more directly
+- emphasis of user-relevant modules when supported by the story
+
+You may NOT:
+- invent facts
+- reorder the story into a fundamentally different editorial logic
+- flatten meaningful quote opportunities into bland paraphrase when a direct quote is clearly stronger
+- ignore required modules
+- change the underlying meaning of the story
+
+USER PREFERENCES
+- Depth preference: {profile.get("depth_preference", "standard")}
+- Vocabulary level: {profile.get("vocabulary_level", "standard")}
+- Evidence visibility: {profile.get("evidence_visibility", "medium")}
+- Interests: {", ".join(interests) if interests else "none"}
+
+PREFERENCE INSTRUCTIONS
+{render_instructions}
+
+EDITORIAL STRUCTURE PAYLOAD
+{json.dumps(structure_payload, ensure_ascii=False)}
+
+WRITING REQUIREMENTS
+- Write a real article, not an outline.
+- Preserve inverted-pyramid structure.
+- Keep the story clear, direct, and newsroom-quality.
+- Use the selected modules as the article spine.
+- The final article should feel coherent and naturally written, not modular or stitched together.
+- Use direct quotes where they materially strengthen the reporting.
+- Do not overload the story with quotes.
+- Preserve attribution naturally and avoid repetitive attribution phrasing.
+- If a quote is selected and valuable, prefer using it rather than flattening it into paraphrase.
+- The dashboard standard headline is not necessarily the user headline; generate a user-facing headline appropriate to this user's settings.
+
+OUTPUT
+Return valid JSON in exactly this shape:
+{{
+  "headline": "string",
+  "summary": "string",
+  "body": "string",
+  "why_it_matters": "string"
+}}
 """
 
     response = client.responses.create(
@@ -648,7 +701,21 @@ FIELD RULES
         input=prompt
     )
 
+    output_text = _clean_json_output(response.output_text)
+
     try:
-        return json.loads(_clean(response.output_text))
-    except:
-        raise HTTPException(500, "Render failed")
+        parsed = json.loads(output_text)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"Model did not return valid JSON: {output_text}")
+
+    return {
+        "headline": parsed.get(
+            "headline",
+            editorial_structure.get("story_core", {}).get("standard_headline")
+            or cluster.get("title")
+            or "Generated story"
+        ),
+        "summary": parsed.get("summary", ""),
+        "body": parsed.get("body", ""),
+        "why_it_matters": parsed.get("why_it_matters", ""),
+    }
