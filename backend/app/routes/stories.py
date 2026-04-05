@@ -540,10 +540,12 @@ def render_story_for_user(story_cluster_id: str, user_profile_id: str):
                 "summary": rendered["summary"],
                 "body": rendered["body"],
                 "why_it_matters": rendered["why_it_matters"],
-                "render_mode": "personalized_article",
+                "highlight_targets_json": rendered.get("highlight_targets", []),
+                "render_mode": "personalized_article"
             }
         )
         .execute()
+        
     )
 
     return {
@@ -1219,6 +1221,7 @@ def render_if_needed(story_cluster_id: str, user_profile_id: str):
                 "summary": rendered["summary"],
                 "body": rendered["body"],
                 "why_it_matters": rendered["why_it_matters"],
+                "highlight_targets_json": rendered.get("highlight_targets", []),
             }
         )
         .execute()

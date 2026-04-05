@@ -556,6 +556,24 @@ def build_structure_render_payload(editorial_structure: dict, profile: dict) -> 
         "render_rules": editorial_structure.get("render_rules") or {},
     }
 
+def collect_highlight_targets_from_modules(selected_modules: list[dict]) -> list[dict]:
+    highlight_targets = []
+
+    for module in selected_modules:
+        module_targets = module.get("highlight_targets") or []
+        for target in module_targets:
+            source_ids = target.get("source_ids") or []
+            if source_ids:
+                highlight_targets.append({
+                    "type": target.get("type"),
+                    "target_text_basis": target.get("target_text_basis"),
+                    "source_ids": source_ids,
+                    "module_id": module.get("module_id"),
+                    "role": module.get("role"),
+                })
+
+    return highlight_targets
+
 def render_story_from_cluster_and_profile(cluster: dict, claims: list[dict], profile: dict) -> dict:
     interests = get_profile_interests(profile)
 
@@ -631,6 +649,7 @@ Return valid JSON in exactly this shape:
             "summary": parsed.get("summary", ""),
             "body": parsed.get("body", ""),
             "why_it_matters": parsed.get("why_it_matters", ""),
+            "highlight_targets": [],
         }
 
     structure_payload = build_structure_render_payload(editorial_structure, profile)
@@ -718,4 +737,5 @@ Return valid JSON in exactly this shape:
         "summary": parsed.get("summary", ""),
         "body": parsed.get("body", ""),
         "why_it_matters": parsed.get("why_it_matters", ""),
+        "highlight_targets": structure_payload.get("highlight_targets", []),
     }
