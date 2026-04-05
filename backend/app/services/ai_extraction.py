@@ -266,6 +266,210 @@ def build_render_instructions(profile: dict) -> str:
 
     return "\n".join(f"- {x}" for x in instructions)
 
+def generate_editorial_structure(cluster: dict, claims: list[dict], sources: list[dict]) -> dict:
+    import json
+
+    interests = cluster.get("interest_tags") or []
+    if isinstance(interests, str):
+        interests = [interests]
+
+    claims_payload = []
+    for claim in claims:
+        claims_payload.append({
+            "id": claim.get("id"),
+            "source_id": claim.get("source_id"),
+            "claim_text": claim.get("claim_text"),
+            "normalized_claim_text": claim.get("normalized_claim_text"),
+            "support_excerpt": claim.get("support_excerpt"),
+            "verification_status": claim.get("verification_status"),
+            "claim_type": claim.get("claim_type"),
+            "support_count": claim.get("support_count"),
+            "story_order": claim.get("story_order"),
+            "is_core_claim": claim.get("is_core_claim"),
+        })
+
+    sources_payload = []
+    for source in sources:
+        sources_payload.append({
+            "id": source.get("id"),
+            "title": source.get("title"),
+            "source_type": source.get("source_type"),
+            "source_url": source.get("source_url"),
+            "source_strength_score": source.get("source_strength_score"),
+            "source_strength_label": source.get("source_strength_label"),
+            "is_canonical": source.get("is_canonical"),
+            "contains_verifiable_info": source.get("contains_verifiable_info"),
+            "is_primarily_opinion": source.get("is_primarily_opinion"),
+            "is_direct_evidence": source.get("is_direct_evidence"),
+        })
+
+    prompt = f"""
+You are building the master editorial structure for a source-grounded straight-news story.
+
+Do NOT write the final user-facing article.
+Do NOT write a summary memo.
+Do NOT write analysis.
+Build the fullest justified editorial structure of the story so that later renders for different users can be generated from it.
+
+Your output must represent:
+- the shared truth structure of the story
+- the strongest editorial ordering
+- required vs optional story modules
+- quote opportunities
+- attribution plans
+- highlight targets for source-linked attribution in user-facing stories
+
+The structure should be as complete as the reporting justifies.
+If the reporting supports 8-10 modules, include them.
+If it only supports 4-5, include only those.
+Do not artificially compress the story.
+
+STORY CLUSTER
+{json.dumps({
+    "id": cluster.get("id"),
+    "title": cluster.get("title"),
+    "top_line": cluster.get("top_line"),
+    "main_issue": cluster.get("main_issue"),
+    "event_type": cluster.get("event_type"),
+    "location": cluster.get("location"),
+    "date_reference": cluster.get("date_reference"),
+    "summary_seed": cluster.get("summary_seed"),
+    "interest_tags": interests,
+}, ensure_ascii=False)}
+
+CLAIMS
+{json.dumps(claims_payload, ensure_ascii=False)}
+
+SOURCES
+{json.dumps(sources_payload, ensure_ascii=False)}
+
+EDITORIAL REQUIREMENTS
+- Think like a top newsroom editor building the master story graph.
+- Preserve inverted-pyramid logic.
+- Identify the strongest lead-worthy facts.
+- Identify the strongest nut-graf material.
+- Distinguish support, procedural detail, official response, counterpoint, context, and closing material.
+- Prefer direct quotes only when they materially strengthen the reporting.
+- Include quote modules when useful, but do not force them.
+- Mark modules as required only when they truly belong in every version of the story.
+- Mark modules as optional when they should appear only in deeper or more specialized versions.
+- Include source_ids and claim_ids for every module.
+- Include attribution guidance for each module.
+- Include highlight targets only for attributable phrases or direct quotes that should be source-linked in the reader experience.
+- Never assign octiq_copy as a highlight target in the user-facing story.
+- The standard_headline should be the newsroom/default headline for the dashboard/editorial view.
+- The structure should support user-specific re-rendering later, so keep it modular.
+
+ROLE TAXONOMY
+Use only these module roles:
+- lead
+- nut_graf
+- support
+- quote_support
+- procedural_detail
+- official_response
+- counterpoint
+- context
+- closing
+
+OUTPUT
+Return valid JSON in exactly this shape:
+
+{{
+  "version": 1,
+  "story_core": {{
+    "standard_headline": "string",
+    "standard_deck": "string",
+    "main_event": "string",
+    "main_issue": "string",
+    "location": "string",
+    "date_reference": "string"
+  }},
+  "editorial_logic": {{
+    "lead_angle": "string",
+    "nut_graf_angle": "string",
+    "default_tone": "straight_news",
+    "default_priority_order": ["lead", "nut_graf", "support"]
+  }},
+  "modules": [
+    {{
+      "module_id": "m1",
+      "role": "lead",
+      "required": true,
+      "priority": 100,
+      "depth_eligibility": ["quick", "standard", "deep"],
+      "interest_tags": ["politics"],
+      "claim_ids": ["claim-id"],
+      "source_ids": ["source-id"],
+      "render_guidance": {{
+        "prefer_quote": false,
+        "allow_quote": true,
+        "max_sentences_quick": 2,
+        "max_sentences_standard": 3,
+        "max_sentences_deep": 4,
+        "headline_candidate": true
+      }},
+      "text_basis": "Rendered editorial-copy basis for this graf/module.",
+      "attribution_plan": [
+        {{
+          "style": "records_show",
+          "source_ids": ["source-id"]
+        }}
+      ],
+      "highlight_targets": [
+        {{
+          "type": "attribution_clause",
+          "target_text_basis": "according to court records",
+          "source_ids": ["source-id"]
+        }}
+      ]
+    }}
+  ],
+  "quote_bank": [
+    {{
+      "quote_id": "q1",
+      "claim_id": "claim-id",
+      "source_id": "source-id",
+      "speaker": "string",
+      "quote_text": "string",
+      "priority": 100,
+      "usable_roles": ["support", "quote_support"],
+      "direct_quote_recommended": true
+    }}
+  ],
+  "render_rules": {{
+    "max_quotes_quick": 1,
+    "max_quotes_standard": 2,
+    "max_quotes_deep": 3,
+    "must_include_roles": ["lead", "nut_graf", "closing"],
+    "quick_optional_roles": [],
+    "standard_optional_roles": ["support", "counterpoint"],
+    "deep_optional_roles": ["support", "procedural_detail", "quote_support", "context", "counterpoint"]
+  }}
+}}
+
+QUALITY BAR
+- The structure must feel like the editorial plan for a serious news article.
+- Do not output placeholder values.
+- Do not include empty modules.
+- Only include modules justified by the provided claims and sources.
+"""
+
+    response = client.responses.create(
+        model="gpt-5-mini",
+        input=prompt
+    )
+
+    output_text = _clean_json_output(response.output_text)
+
+    try:
+        return json.loads(output_text)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Model did not return valid JSON for editorial structure: {output_text}"
+        )
+
 def render_story_from_cluster_and_profile(cluster, claims, profile):
     interests = profile.get("interests") or []
     if isinstance(interests, str):

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.supabase_client import supabase
 from app.services.ai_extraction import (
     extract_story_fields_from_source,
+    generate_editorial_structure,
     render_story_from_cluster_and_profile,
 )
 
@@ -23,7 +24,76 @@ class MergeStoryClusterRequest(BaseModel):
 class StoryEditorialAssetsUpdate(BaseModel):
     image_url: Optional[str] = None
     image_attribution: Optional[str] = None
-    
+
+def build_and_store_editorial_structure(story_cluster_id: str):
+    cluster_response = (
+        supabase.table("story_clusters")
+        .select("*")
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    if not cluster_response.data:
+        raise HTTPException(status_code=404, detail="Story cluster not found")
+
+    cluster = cluster_response.data[0]
+
+    source_links_response = (
+        supabase.table("story_sources")
+        .select("source_id")
+        .eq("story_cluster_id", story_cluster_id)
+        .execute()
+    )
+
+    source_ids = [row["source_id"] for row in source_links_response.data] if source_links_response.data else []
+
+    sources = []
+    if source_ids:
+        sources_response = (
+            supabase.table("sources")
+            .select("*")
+            .in_("id", source_ids)
+            .execute()
+        )
+        sources = sources_response.data or []
+
+    claim_links_response = (
+        supabase.table("story_claims")
+        .select("claim_id")
+        .eq("story_cluster_id", story_cluster_id)
+        .execute()
+    )
+
+    claim_ids = [row["claim_id"] for row in claim_links_response.data] if claim_links_response.data else []
+
+    claims = []
+    if claim_ids:
+        claims_response = (
+            supabase.table("claims")
+            .select("*")
+            .in_("id", claim_ids)
+            .order("story_order")
+            .execute()
+        )
+        claims = claims_response.data or []
+
+    if not claims:
+        return None
+
+    structure = generate_editorial_structure(cluster, claims, sources)
+
+    updated = (
+        supabase.table("story_clusters")
+        .update({
+            "editorial_structure_json": structure,
+            "editorial_structure_updated_at": datetime.utcnow().isoformat(),
+        })
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    return updated.data[0] if updated.data else None
+
 def create_story_cluster_from_source(source_id: str):
     source_response = (
         supabase.table("sources")
@@ -125,16 +195,18 @@ def create_story_cluster_from_source(source_id: str):
         linked_claims.append(link_response.data[0])
         story_order += 1
 
+    build_and_store_editorial_structure(story_cluster_id)
+
     return {
         "story_cluster_id": story_cluster_id,
         "title": story_cluster["title"],
-        "main_issue": story_cluster.get("main_issue"),
-        "event_type": story_cluster.get("event_type"),
-        "location": story_cluster.get("location"),
-        "date_reference": story_cluster.get("date_reference"),
+        "main_issue": story_cluster["main_issue"],
+        "event_type": story_cluster["event_type"],
+        "location": story_cluster["location"],
+        "date_reference": story_cluster["date_reference"],
         "claims_linked": len(linked_claims),
         "core_claims_requested": story_fields.get("core_claims", []),
-        "content_updated_at": story_cluster.get("content_updated_at"),
+        "content_updated_at": story_cluster.get("content_updated_at")
     }
 
 def refresh_story_cluster_metadata(story_cluster_id: str):
@@ -307,6 +379,7 @@ def add_source_to_story_cluster(story_cluster_id: str, source_id: str):
     ).eq("id", story_cluster_id).execute()
 
     updated_cluster = refresh_story_cluster_metadata(story_cluster_id)
+    build_and_store_editorial_structure(story_cluster_id)
 
     return {
         "story_cluster_id": story_cluster_id,
