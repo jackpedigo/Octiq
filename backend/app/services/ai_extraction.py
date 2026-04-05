@@ -266,6 +266,67 @@ def build_render_instructions(profile: dict) -> str:
 
     return "\n".join(f"- {x}" for x in instructions)
 
+def score_claim_for_editorial_priority(claim: dict, source_lookup: dict) -> int:
+    score = 0
+
+    verification_status = claim.get("verification_status")
+    claim_type = claim.get("claim_type")
+    support_count = claim.get("support_count") or 0
+    is_core_claim = claim.get("is_core_claim", False)
+
+    source = source_lookup.get(claim.get("source_id")) or {}
+    source_strength = source.get("source_strength_score") or 0
+    is_canonical = source.get("is_canonical", False)
+    is_direct_evidence = source.get("is_direct_evidence", False)
+    is_opinion = source.get("is_primarily_opinion", False)
+    source_type = source.get("source_type")
+
+    if verification_status == "core":
+        score += 40
+    elif verification_status == "supported":
+        score += 28
+    elif verification_status == "attributed_only":
+        score += 10
+
+    if is_core_claim:
+        score += 20
+
+    score += min(support_count * 4, 16)
+
+    if is_canonical:
+        score += 12
+
+    if is_direct_evidence:
+        score += 10
+
+    if source_strength >= 90:
+        score += 10
+    elif source_strength >= 75:
+        score += 6
+    elif source_strength >= 60:
+        score += 3
+
+    if claim_type == "statistic":
+        score += 8
+    elif claim_type == "fact":
+        score += 6
+    elif claim_type == "official_position":
+        score += 4
+    elif claim_type == "denial":
+        score += 3
+    elif claim_type == "quote":
+        score += 2
+    elif claim_type == "context":
+        score += 1
+
+    if source_type == "octiq_copy":
+        score += 12
+
+    if is_opinion:
+        score -= 8
+
+    return score
+
 def generate_editorial_structure(cluster: dict, claims: list[dict], sources: list[dict]) -> dict:
     import json
 
@@ -273,8 +334,16 @@ def generate_editorial_structure(cluster: dict, claims: list[dict], sources: lis
     if isinstance(interests, str):
         interests = [interests]
 
+    source_lookup = {source.get("id"): source for source in sources}
+
+    sorted_claims = sorted(
+        claims,
+        key=lambda c: score_claim_for_editorial_priority(c, source_lookup),
+        reverse=True
+    )
+
     claims_payload = []
-    for claim in claims:
+    for claim in sorted_claims:
         claims_payload.append({
             "id": claim.get("id"),
             "source_id": claim.get("source_id"),
@@ -286,6 +355,7 @@ def generate_editorial_structure(cluster: dict, claims: list[dict], sources: lis
             "support_count": claim.get("support_count"),
             "story_order": claim.get("story_order"),
             "is_core_claim": claim.get("is_core_claim"),
+            "editorial_priority_score": score_claim_for_editorial_priority(claim, source_lookup),
         })
 
     sources_payload = []
@@ -306,23 +376,23 @@ def generate_editorial_structure(cluster: dict, claims: list[dict], sources: lis
     prompt = f"""
 You are building the master editorial structure for a source-grounded straight-news story.
 
-Do NOT write the final user-facing article.
-Do NOT write a summary memo.
-Do NOT write analysis.
-Build the fullest justified editorial structure of the story so that later renders for different users can be generated from it.
+This is not the final article.
+This is the newsroom master structure from which multiple user-specific versions will later be rendered.
 
-Your output must represent:
-- the shared truth structure of the story
-- the strongest editorial ordering
-- required vs optional story modules
-- quote opportunities
-- attribution plans
-- highlight targets for source-linked attribution in user-facing stories
+Your job is to act like a top editor:
+- identify the real lead
+- identify the real nut graf
+- distinguish essential support from optional support
+- decide where direct quotes are actually worth using
+- separate official response from criticism/counterpoint
+- separate context from core reporting
+- build a clean closing
+- identify which attribution phrases or direct quotes should be source-linked in the reader experience
 
-The structure should be as complete as the reporting justifies.
-If the reporting supports 8-10 modules, include them.
-If it only supports 4-5, include only those.
-Do not artificially compress the story.
+You must build the fullest justified version of the story.
+Do not artificially shorten it.
+If the reporting justifies many modules, include many modules.
+If it does not, do not invent them.
 
 STORY CLUSTER
 {json.dumps({
@@ -343,25 +413,67 @@ CLAIMS
 SOURCES
 {json.dumps(sources_payload, ensure_ascii=False)}
 
-EDITORIAL REQUIREMENTS
-- Think like a top newsroom editor building the master story graph.
-- Preserve inverted-pyramid logic.
-- Identify the strongest lead-worthy facts.
-- Identify the strongest nut-graf material.
-- Distinguish support, procedural detail, official response, counterpoint, context, and closing material.
-- Prefer direct quotes only when they materially strengthen the reporting.
-- Include quote modules when useful, but do not force them.
-- Mark modules as required only when they truly belong in every version of the story.
-- Mark modules as optional when they should appear only in deeper or more specialized versions.
-- Include source_ids and claim_ids for every module.
-- Include attribution guidance for each module.
-- Include highlight targets only for attributable phrases or direct quotes that should be source-linked in the reader experience.
-- Never assign octiq_copy as a highlight target in the user-facing story.
-- The standard_headline should be the newsroom/default headline for the dashboard/editorial view.
-- The structure should support user-specific re-rendering later, so keep it modular.
+EDITORIAL DECISION RULES
+
+LEAD RULES
+- The lead must be built from the strongest, best-supported, most newsworthy development.
+- Do not lead with background, reaction, commentary, or secondary detail.
+- Prefer scale + action + subject over thematic framing.
+
+NUT GRAF RULES
+- The nut graf should explain why the development matters in story terms.
+- It should clarify scale, stakes, consequence, or institutional significance.
+- It should not simply repeat the lead.
+
+SUPPORT RULES
+- Support modules should contain reporting that materially advances the story.
+- Do not create support modules that merely restate earlier material.
+- Prioritize verified facts, numbers, procedural specifics, and concrete developments.
+
+QUOTE RULES
+- Quotes should be used only when they materially strengthen the reporting.
+- Prefer direct quotes when they add authority, specificity, or voice that paraphrase would weaken.
+- Do not fill the quote_bank with weak or decorative quotes.
+- A strong quote should usually come from a meaningful source, not generic commentary.
+- If a quote is emotionally vivid but factually weak, do not prioritize it over stronger reporting.
+- Do not overpopulate quote modules.
+
+OFFICIAL RESPONSE RULES
+- Official response modules should contain the formal defense, explanation, or institutional position.
+- Keep this separate from factual support modules.
+
+COUNTERPOINT RULES
+- Counterpoint modules should capture denial, contradiction, challenge, or criticism that materially belongs in the story.
+- Do not confuse counterpoint with general context.
+
+CONTEXT RULES
+- Context modules should help the reader situate the event, but they should not displace core reporting.
+- Context should be used when it is genuinely necessary and supported.
+
+CLOSING RULES
+- Closing modules should end on a grounded, reportorial point.
+- Prefer a still-unresolved fact, next step, or current-status point.
+- Do not end on vague color or thematic language.
+
+HIGHLIGHT TARGET RULES
+- Only create highlight targets for phrases that should be source-linked in the reader experience.
+- Good highlight targets include:
+  - direct quotes
+  - “according to ...” clauses
+  - “X said” / “the agency said” / “the filing says”
+  - direct source-invoking attribution language
+- Do not create highlight targets for generic factual prose.
+- Do not create highlight targets for octiq_copy.
+- highlight target text should be concise and likely to appear naturally in the eventual render.
+
+MODULE QUALITY RULES
+- Every module must have a distinct editorial purpose.
+- Do not produce multiple modules that do the same job.
+- Each module's text_basis should read like clean editorial copy for that graf, not like notes or claims pasted together.
+- text_basis should be publication-quality backbone copy.
 
 ROLE TAXONOMY
-Use only these module roles:
+Use only:
 - lead
 - nut_graf
 - support
@@ -409,7 +521,7 @@ Return valid JSON in exactly this shape:
         "max_sentences_deep": 4,
         "headline_candidate": true
       }},
-      "text_basis": "Rendered editorial-copy basis for this graf/module.",
+      "text_basis": "string",
       "attribution_plan": [
         {{
           "style": "records_show",
@@ -448,11 +560,13 @@ Return valid JSON in exactly this shape:
   }}
 }}
 
-QUALITY BAR
-- The structure must feel like the editorial plan for a serious news article.
-- Do not output placeholder values.
-- Do not include empty modules.
-- Only include modules justified by the provided claims and sources.
+STRICT QUALITY BAR
+- Do not output empty modules.
+- Do not output duplicate modules.
+- Do not output weak quotes in quote_bank unless they are truly useful.
+- Do not make every module required.
+- Preserve a realistic newsroom hierarchy.
+- Make the structure strong enough that later user renders can vary meaningfully without losing editorial discipline.
 """
 
     response = client.responses.create(
@@ -463,12 +577,60 @@ QUALITY BAR
     output_text = _clean_json_output(response.output_text)
 
     try:
-        return json.loads(output_text)
+        parsed = json.loads(output_text)
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=500,
             detail=f"Model did not return valid JSON for editorial structure: {output_text}"
         )
+
+    modules = parsed.get("modules") or []
+
+    # remove duplicate/empty modules
+    cleaned_modules = []
+    seen_texts = set()
+
+    for module in modules:
+        text_basis = (module.get("text_basis") or "").strip()
+        if not text_basis:
+            continue
+
+        normalized = " ".join(text_basis.lower().split())
+        if normalized in seen_texts:
+            continue
+
+        seen_texts.add(normalized)
+        cleaned_modules.append(module)
+
+    # ensure priorities descend cleanly
+    cleaned_modules.sort(key=lambda m: m.get("priority", 0), reverse=True)
+    parsed["modules"] = cleaned_modules
+
+    # tighten quote bank to only quotes that map to selected module roles
+    quote_bank = parsed.get("quote_bank") or []
+    valid_roles = {m.get("role") for m in cleaned_modules}
+
+    cleaned_quotes = []
+    seen_quotes = set()
+
+    for quote in sorted(quote_bank, key=lambda q: q.get("priority", 0), reverse=True):
+        quote_text = (quote.get("quote_text") or "").strip()
+        if not quote_text:
+            continue
+
+        if quote_text.lower() in seen_quotes:
+            continue
+
+        usable_roles = set(quote.get("usable_roles") or [])
+        if usable_roles and not usable_roles.intersection(valid_roles):
+            continue
+
+        seen_quotes.add(quote_text.lower())
+        cleaned_quotes.append(quote)
+
+    parsed["quote_bank"] = cleaned_quotes[:5]
+
+    return parsed
 
 def get_profile_interests(profile: dict) -> list[str]:
     interests = profile.get("interests") or []
@@ -500,6 +662,7 @@ def select_editorial_modules_for_profile(editorial_structure: dict, profile: dic
         required = module.get("required", False)
         depth_eligibility = set(module.get("depth_eligibility") or [])
         module_interests = set(module.get("interest_tags") or [])
+        priority = module.get("priority", 0)
 
         if depth_eligibility and depth not in depth_eligibility:
             continue
@@ -508,9 +671,11 @@ def select_editorial_modules_for_profile(editorial_structure: dict, profile: dic
 
         if required or role in must_include_roles:
             include = True
-        elif role in optional_roles:
+        elif role in optional_roles and priority >= 60:
             include = True
-        elif interests and module_interests.intersection(interests):
+        elif interests and module_interests.intersection(interests) and priority >= 45:
+            include = True
+        elif depth == "deep" and priority >= 75:
             include = True
 
         if include:
@@ -540,7 +705,15 @@ def select_quotes_for_profile(editorial_structure: dict, profile: dict, selected
         if set(q.get("usable_roles") or []).intersection(selected_roles)
     ]
 
-    eligible_quotes.sort(key=lambda q: q.get("priority", 0), reverse=True)
+    # prefer explicitly recommended direct quotes
+    eligible_quotes.sort(
+        key=lambda q: (
+            1 if q.get("direct_quote_recommended") else 0,
+            q.get("priority", 0)
+        ),
+        reverse=True
+    )
+
     return eligible_quotes[:max_quotes]
 
 
