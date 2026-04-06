@@ -8,6 +8,13 @@ ALLOWED_INTEREST_TAGS = [
     "international","climate","business","media","culture","sports"
 ]
 
+def _clean_json_output(output_text: str) -> str:
+    output_text = output_text.strip()
+
+    if output_text.startswith("```"):
+        output_text = output_text.replace("```json", "").replace("```", "").strip()
+
+    return output_text
 
 def _clean(text: str):
     text = text.strip()
@@ -877,6 +884,39 @@ WRITING REQUIREMENTS
 - Preserve attribution naturally and avoid repetitive attribution phrasing.
 - If a quote is selected and valuable, prefer using it rather than flattening it into paraphrase.
 - The dashboard standard headline is not necessarily the user headline; generate a user-facing headline appropriate to this user's settings.
+
+STRUCTURE EXECUTION RULE
+
+- Each selected module should map to one paragraph.
+- Do not merge multiple modules into one paragraph.
+- Do not split a module across multiple paragraphs unless depth requires it.
+- Preserve the module order.
+
+PARAGRAPH DISCIPLINE
+
+- Each paragraph should do one job only:
+  lead, nut graf, support, procedural detail, response, counterpoint, context, or close.
+- Do not mix multiple roles in one paragraph.
+
+QUOTE PRIORITY
+
+- If a selected quote is clearly the strongest expression of a point, use it directly rather than paraphrasing.
+- Prefer embedding one strong quote within a paragraph over summarizing multiple weaker statements.
+
+ANALYSIS CONTROL
+
+- Do not introduce analysis or implications unless they are explicitly supported by claims or attributed sources.
+- Avoid sentences that generalize beyond the reporting.
+- Do not write like an analyst or commentator.
+
+ENDING RULE
+
+- End on a concrete, reportable fact or clearly supported unresolved point.
+- Do not end with analysis, dual framing, or generalized implications.
+- Prefer:
+  - current status
+  - pending review
+  - unresolved question grounded in reporting
 
 OUTPUT
 Return valid JSON in exactly this shape:

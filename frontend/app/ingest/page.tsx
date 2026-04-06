@@ -52,87 +52,10 @@ type StoryCluster = {
   latest_editor_note_type?: string | null;
 };
 
-type EditorialStructureModule = {
-  module_id: string;
-  role:
-    | "lead"
-    | "nut_graf"
-    | "support"
-    | "quote_support"
-    | "procedural_detail"
-    | "official_response"
-    | "counterpoint"
-    | "context"
-    | "closing";
-  required: boolean;
-  priority: number;
-  depth_eligibility: string[];
-  interest_tags?: string[];
-  claim_ids: string[];
-  source_ids: string[];
-  render_guidance?: {
-    prefer_quote?: boolean;
-    allow_quote?: boolean;
-    max_sentences_quick?: number;
-    max_sentences_standard?: number;
-    max_sentences_deep?: number;
-    headline_candidate?: boolean;
-  };
-  text_basis: string;
-  attribution_plan?: Array<{
-    style: string;
-    source_ids: string[];
-  }>;
-  highlight_targets?: Array<{
-    type: string;
-    target_text_basis: string;
-    source_ids: string[];
-  }>;
-};
-
-type EditorialStructure = {
-  version: number;
-  story_core?: {
-    standard_headline?: string;
-    standard_deck?: string;
-    main_event?: string;
-    main_issue?: string;
-    location?: string;
-    date_reference?: string;
-  };
-  editorial_logic?: {
-    lead_angle?: string;
-    nut_graf_angle?: string;
-    default_tone?: string;
-    default_priority_order?: string[];
-  };
-  modules?: EditorialStructureModule[];
-  quote_bank?: Array<{
-    quote_id: string;
-    claim_id: string;
-    source_id: string;
-    speaker: string;
-    quote_text: string;
-    priority: number;
-    usable_roles: string[];
-    direct_quote_recommended: boolean;
-  }>;
-  render_rules?: {
-    max_quotes_quick?: number;
-    max_quotes_standard?: number;
-    max_quotes_deep?: number;
-    must_include_roles?: string[];
-    quick_optional_roles?: string[];
-    standard_optional_roles?: string[];
-    deep_optional_roles?: string[];
-  };
-};
-
 type StoryDetail = {
   story_cluster: StoryCluster;
   sources: Source[];
   claims: Claim[];
-  editorial_structure?: EditorialStructure | null;
   latest_render?: {
     id: string;
     headline?: string | null;
@@ -188,30 +111,6 @@ function statusPill(status?: string | null) {
 function buildMissingList(item: DashboardStory, detail: StoryDetail | null) {
   const missing: string[] = [];
 
-  const structureModules = detail?.editorial_structure?.modules || [];
-
-if (structureModules.length === 0) {
-  missing.push("No editorial structure has been generated yet.");
-}
-
-const hasNutGraf = structureModules.some((m) => m.role === "nut_graf");
-const hasClosing = structureModules.some((m) => m.role === "closing");
-const hasOfficialResponse = structureModules.some(
-  (m) => m.role === "official_response"
-);
-
-if (!hasNutGraf) {
-  missing.push("Story still needs a clear nut graf.");
-}
-
-if (!hasClosing) {
-  missing.push("Story needs a stronger closing module.");
-}
-
-if (!hasOfficialResponse) {
-  missing.push("Story does not yet include an official response module.");
-}
-
   if (item.canonical_claim_count === 0) {
     missing.push("No canonical claims are currently anchoring this story.");
   }
@@ -239,133 +138,103 @@ function getSourceForClaim(claim: Claim, sources: Source[]) {
   return sources.find((source) => source.id === claim.source_id);
 }
 
-function getEditorialModules(story: StoryDetail | null) {
-  if (!story?.editorial_structure?.modules) return [];
-  return story.editorial_structure.modules
+function getStoryBackboneParagraphs(claims: Claim[]) {
+  const ordered = claims
     .slice()
-    .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    .sort((a, b) => (a.story_order || 999) - (b.story_order || 999));
+
+  const lead = ordered.slice(0, 2);
+  const nutGraf = ordered.slice(2, 4);
+  const keyReporting = ordered.slice(4, 8);
+  const context = ordered.slice(8, 12);
+
+  const buildParagraph = (items: Claim[]) =>
+    items
+      .map((claim) => claim.normalized_claim_text || claim.claim_text)
+      .filter(Boolean)
+      .join(" ");
+
+  return [
+    { label: "Lead", claims: lead, text: buildParagraph(lead) },
+    { label: "Nut graf", claims: nutGraf, text: buildParagraph(nutGraf) },
+    { label: "Key reporting", claims: keyReporting, text: buildParagraph(keyReporting) },
+    { label: "Context / background", claims: context, text: buildParagraph(context) },
+  ].filter((section) => section.claims.length > 0 && section.text.trim());
 }
 
-function getSourcesForModule(
-  module: EditorialStructureModule,
-  sources: Source[]
-) {
-  return sources.filter((source) => module.source_ids.includes(source.id));
-}
+function getSourcesForClaims(claims: Claim[], sources: Source[]) {
+  const sourceMap = new Map<string, Source>();
 
-function roleLabel(role: EditorialStructureModule["role"]) {
-  switch (role) {
-    case "lead":
-      return "Lead";
-    case "nut_graf":
-      return "Nut graf";
-    case "support":
-      return "Support";
-    case "quote_support":
-      return "Quote support";
-    case "procedural_detail":
-      return "Procedural detail";
-    case "official_response":
-      return "Official response";
-    case "counterpoint":
-      return "Counterpoint";
-    case "context":
-      return "Context";
-    case "closing":
-      return "Closing";
-    default:
-      return role;
+  for (const claim of claims) {
+    const source = sources.find((s) => s.id === claim.source_id);
+    if (source) {
+      sourceMap.set(source.id, source);
+    }
   }
+
+  return Array.from(sourceMap.values());
 }
 
-function EditorialStructureView({
-  story,
+function StoryBackboneView({
+  claims,
+  sources,
 }: {
-  story: StoryDetail;
+  claims: Claim[];
+  sources: Source[];
 }) {
-  const modules = getEditorialModules(story);
-
-  if (!modules.length) {
-    return (
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-semibold text-slate-950">
-          Editorial structure
-        </h3>
-        <div className="mt-3 text-sm text-slate-500">
-          No editorial structure has been generated for this story yet.
-        </div>
-      </div>
-    );
-  }
+  const paragraphs = getStoryBackboneParagraphs(claims);
 
   return (
     <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">
-      <div>
-        <h3 className="text-xl font-semibold text-slate-950">
-          Editorial structure
-        </h3>
-        {story.editorial_structure?.story_core?.standard_deck ? (
-          <div className="mt-2 text-sm text-slate-600">
-            {story.editorial_structure.story_core.standard_deck}
-          </div>
-        ) : null}
-      </div>
+      <h3 className="text-xl font-semibold text-slate-950">
+        Editorial structure
+      </h3>
 
-      <div className="space-y-4">
-        {modules.map((module) => {
-          const linkedSources = getSourcesForModule(module, story.sources);
+      <div className="space-y-5">
+        {paragraphs.length > 0 ? (
+          paragraphs.map((section, index) => {
+            const sectionSources = getSourcesForClaims(section.claims, sources);
 
-          return (
-            <div
-              key={module.module_id}
-              className="rounded-2xl border border-slate-200 p-5"
-            >
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  {roleLabel(module.role)}
-                </span>
-
-                {module.required ? (
-                  <span className="rounded-full bg-[#1F0954]/10 px-3 py-1 text-xs font-medium text-[#1F0954]">
-                    Required
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                    Optional
-                  </span>
-                )}
-
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                  Priority {module.priority}
-                </span>
-              </div>
-
-              <div className="text-[15px] leading-[1.6] text-slate-800">
-                {module.text_basis}
-              </div>
-
-              {linkedSources.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {linkedSources.map((source) => (
-                    <a
-                      key={source.id}
-                      href={source.source_url || "#"}
-                      target={source.source_url ? "_blank" : undefined}
-                      rel={source.source_url ? "noreferrer" : undefined}
-                      className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 hover:bg-slate-200"
-                      style={{
-                        pointerEvents: source.source_url ? "auto" : "none",
-                        opacity: source.source_url ? 1 : 0.7,
-                      }}
-                    >
-                      {source.title || formatSourceType(source.source_type)}
-                    </a>
-                  ))}
+            return (
+              <div
+                key={`${section.label}-${index}`}
+                className="rounded-2xl border border-slate-200 p-5"
+              >
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  {section.label}
                 </div>
-              )}
-            </div>
-          );
-        })}
+
+                <div className="text-[15px] leading-[1.6] text-slate-800">
+                  {section.text}
+                </div>
+
+                {sectionSources.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {sectionSources.map((source) => (
+                      <a
+                        key={source.id}
+                        href={source.source_url || "#"}
+                        target={source.source_url ? "_blank" : undefined}
+                        rel={source.source_url ? "noreferrer" : undefined}
+                        className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 hover:bg-slate-200"
+                        style={{
+                          pointerEvents: source.source_url ? "auto" : "none",
+                          opacity: source.source_url ? 1 : 0.7,
+                        }}
+                      >
+                        {source.title || formatSourceType(source.source_type)}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="text-sm text-slate-500">
+            No structured backbone available yet.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -415,6 +284,9 @@ export default function OctiqEditorialDashboard() {
 
   const [heroImageUrl, setHeroImageUrl] = useState("");
   const [heroImageAttribution, setHeroImageAttribution] = useState("");
+
+  const [heroFile, setHeroFile] = useState<File | null>(null);
+  const [heroAttribution, setHeroAttribution] = useState("");
 
   const [clusterOptions, setClusterOptions] = useState<
    Array<{ id: string; title: string }>
@@ -806,6 +678,24 @@ const res = await fetch(url);
     }
   };
 
+const uploadHero = async () => {
+  if (!heroFile || !selectedStory) return;
+
+  const formData = new FormData();
+  formData.append("file", heroFile);
+  formData.append("attribution", heroAttribution);
+
+  const res = await fetch(
+    `${API_BASE}/stories/${selectedStory.story_cluster.id}/hero-image`,
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+
+  await loadStory(selectedStory.story_cluster.id);
+};
+
   const handleIngest = async () => {
     setIngesting(true);
     setError("");
@@ -846,23 +736,6 @@ const res = await fetch(url);
 
       setIngestResult(data);
       setSuccess("Source ingested successfully.");
-
-      const resolvedStoryClusterId =
-  data.story_cluster_id ||
-  data.cluster_result?.story_cluster_id ||
-  data.cluster_result?.create_result?.story_cluster_id ||
-  data.cluster_result?.add_result?.story_cluster_id;
-
-if (resolvedStoryClusterId && (heroImageUrl.trim() || heroImageAttribution.trim())) {
-  await fetch(`${API_BASE}/stories/${resolvedStoryClusterId}/editorial-assets`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      image_url: heroImageUrl.trim() || null,
-      image_attribution: heroImageAttribution.trim() || null,
-    }),
-  });
-}
 
       if (data.story_cluster_id) {
         setStoryClusterId(data.story_cluster_id);
@@ -1067,32 +940,12 @@ if (resolvedStoryClusterId && (heroImageUrl.trim() || heroImageAttribution.trim(
                           {tab === "publishable" ? "Publishable review" : "Story cluster"}
                         </div>
                         <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
-                            {selectedStory.editorial_structure?.story_core?.standard_headline ||
-                            selectedStory.story_cluster.top_line ||
+                          {selectedStory.story_cluster.top_line ||
+                            selectedDashboardStory.latest_render?.headline ||
                             selectedStory.story_cluster.title ||
                             "Untitled story"}
                         </h2>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="space-y-2">
-                          <div className="text-sm font-medium">Hero image URL (optional)</div>
-                          <input
-                            value={heroImageUrl}
-                            onChange={(e) => setHeroImageUrl(e.target.value)}
-                            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                            placeholder="https://..."
-                          />
-                        </label>
 
-                        <label className="space-y-2">
-                          <div className="text-sm font-medium">Image attribution (optional)</div>
-                          <input
-                            value={heroImageAttribution}
-                            onChange={(e) => setHeroImageAttribution(e.target.value)}
-                            className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                            placeholder="Photo by ..."
-                          />
-                        </label>
-                      </div>
                         <div className="flex flex-wrap gap-2 text-sm text-slate-600">
                           <span className="rounded-full bg-slate-100 px-3 py-1">
                             {selectedStory.story_cluster.editorial_status || "draft"}
@@ -1189,6 +1042,24 @@ if (resolvedStoryClusterId && (heroImageUrl.trim() || heroImageAttribution.trim(
                             )}
                           </div>
                         )}
+
+          <div className="flex gap-3 items-center">
+  <input
+    type="file"
+    accept="image/png,image/jpeg"
+    onChange={(e) => setHeroFile(e.target.files?.[0] || null)}
+  />
+
+  <input
+    placeholder="Attribution"
+    value={heroAttribution}
+    onChange={(e) => setHeroAttribution(e.target.value)}
+    className="border px-3 py-2 rounded"
+  />
+
+  <button onClick={uploadHero}>Add image</button>
+</div>
+
           {tab === "publishable" && (
                     <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
                       <h3 className="text-xl font-semibold text-slate-950">
@@ -1269,7 +1140,10 @@ if (resolvedStoryClusterId && (heroImageUrl.trim() || heroImageAttribution.trim(
 
                   <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
                     <div className="space-y-6">
-                      <EditorialStructureView story={selectedStory} />
+                      <StoryBackboneView
+                        claims={selectedStory.claims}
+                        sources={selectedStory.sources}
+                      />
                       <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
                         <h3 className="text-xl font-semibold text-slate-950">
                           Sources attached

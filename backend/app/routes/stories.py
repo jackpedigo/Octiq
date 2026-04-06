@@ -1265,3 +1265,19 @@ def update_story_editorial_assets(story_cluster_id: str, payload: StoryEditorial
         "message": "Story editorial assets updated",
         "story_cluster": updated.data[0],
     }
+
+@router.post("/stories/{story_cluster_id}/hero-image")
+async def upload_hero_image(story_cluster_id: str, file: UploadFile, attribution: str):
+    path = f"story-images/{story_cluster_id}/{file.filename}"
+
+    supabase.storage.from_("images").upload(path, file.file)
+
+    public_url = supabase.storage.from_("images").get_public_url(path)
+
+    supabase.table("story_clusters").update({
+        "image_url": public_url,
+        "image_attribution": attribution,
+        "content_updated_at": datetime.utcnow().isoformat()
+    }).eq("id", story_cluster_id).execute()
+
+    return {"image_url": public_url}
