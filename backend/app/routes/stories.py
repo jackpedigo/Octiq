@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.supabase_client import supabase
 from app.services.ai_extraction import (
-    extract_story_fields_from_source,
+    analyze_source_for_strength_and_story_fields,
     generate_editorial_structure,
     render_story_from_cluster_and_profile,
 )
@@ -119,7 +119,7 @@ def create_story_cluster_from_source(source_id: str):
         raise HTTPException(status_code=404, detail="No claims found for this source")
 
     claims = claims_response.data
-    story_fields = extract_story_fields_from_source(source)
+    story_fields = analyze_source_for_strength_and_story_fields(source)
 
     cluster_response = (
         supabase.table("story_clusters")
@@ -237,7 +237,7 @@ def refresh_story_cluster_metadata(story_cluster_id: str):
         sources[0]
     )
 
-    story_fields = extract_story_fields_from_source(canonical_source)
+    story_fields = analyze_source_for_strength_and_story_fields(canonical_source)
 
     updated = (
         supabase.table("story_clusters")
@@ -378,8 +378,14 @@ def add_source_to_story_cluster(story_cluster_id: str, source_id: str):
         }
     ).eq("id", story_cluster_id).execute()
 
-    updated_cluster = refresh_story_cluster_metadata(story_cluster_id)
-    build_and_store_editorial_structure(story_cluster_id)
+    updated_cluster = None
+    if added_count > 0:
+        updated_cluster = refresh_story_cluster_metadata(story_cluster_id)
+
+    structure_updated = False
+    if added_count > 0:
+        build_and_store_editorial_structure(story_cluster_id)
+        structure_updated = True
 
     return {
         "story_cluster_id": story_cluster_id,
@@ -388,8 +394,8 @@ def add_source_to_story_cluster(story_cluster_id: str, source_id: str):
         "claims_added_to_cluster": added_count,
         "claims_skipped": skipped_count,
         "updated_cluster": updated_cluster,
+        "structure_updated": structure_updated,
     }
-
 
 def match_or_create_story_cluster(source_id: str):
     source_response = (
@@ -403,7 +409,7 @@ def match_or_create_story_cluster(source_id: str):
         raise HTTPException(status_code=404, detail="Source not found")
 
     source = source_response.data[0]
-    story_fields = extract_story_fields_from_source(source)
+    story_fields = analyze_source_for_strength_and_story_fields(source)
 
     main_issue = (story_fields.get("main_issue") or "").strip().lower()
     event_type = (story_fields.get("event_type") or "").strip().lower()

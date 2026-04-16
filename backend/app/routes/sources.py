@@ -4,8 +4,8 @@ from app.supabase_client import supabase
 from app.schemas import SourceCreate
 from app.routes.stories import add_source_to_story_cluster, match_or_create_story_cluster
 from app.services.ai_extraction import (
+    analyze_source_for_strength_and_story_fields,
     extract_claims_from_source,
-    assess_source_strength,
 )
 
 router = APIRouter()
@@ -59,15 +59,15 @@ def ingest_source(source: SourceCreate):
     source_id = created_source["id"]
 
     if created_source["source_type"] != "octiq_copy":
-        strength = assess_source_strength(created_source)
+        analysis = analyze_source_for_strength_and_story_fields(created_source)
 
         supabase.table("sources").update({
-            "source_strength_score": strength.get("source_strength_score"),
-            "source_strength_label": strength.get("source_strength_label"),
-            "is_canonical": strength.get("is_canonical", False),
-            "contains_verifiable_info": strength.get("contains_verifiable_info", False),
-            "is_primarily_opinion": strength.get("is_primarily_opinion", False),
-            "is_direct_evidence": strength.get("is_direct_evidence", False),
+            "source_strength_score": analysis.get("source_strength_score"),
+            "source_strength_label": analysis.get("source_strength_label"),
+            "is_canonical": analysis.get("is_canonical", False),
+            "contains_verifiable_info": analysis.get("contains_verifiable_info", False),
+            "is_primarily_opinion": analysis.get("is_primarily_opinion", False),
+            "is_direct_evidence": analysis.get("is_direct_evidence", False),
         }).eq("id", source_id).execute()
 
         created_source = (
@@ -76,7 +76,7 @@ def ingest_source(source: SourceCreate):
             .eq("id", source_id)
             .execute()
             .data[0]
-        )
+    )
 
     claims = extract_claims_from_source(created_source)
 

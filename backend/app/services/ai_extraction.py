@@ -8,6 +8,11 @@ ALLOWED_INTEREST_TAGS = [
     "international","climate","business","media","culture","sports"
 ]
 
+SOURCE_ANALYSIS_MODEL = "gpt-5-nano"
+CLAIM_EXTRACTION_MODEL = "gpt-5-mini"
+EDITORIAL_STRUCTURE_MODEL = "gpt-5-mini"
+STORY_RENDER_MODEL = "gpt-5-mini"
+
 def _clean_json_output(output_text: str) -> str:
     output_text = output_text.strip()
 
@@ -67,6 +72,93 @@ Text:
 # CLAIM EXTRACTION
 # -----------------------------------
 
+def analyze_source_for_strength_and_story_fields(source: dict) -> dict:
+    if source.get("source_type") == "octiq_copy":
+        return {
+            "source_strength_score": 100,
+            "source_strength_label": "canonical",
+            "is_canonical": True,
+            "contains_verifiable_info": True,
+            "is_primarily_opinion": False,
+            "is_direct_evidence": True,
+            "title": source.get("title") or "Octiq Copy",
+            "main_issue": None,
+            "event_type": None,
+            "location": None,
+            "date_reference": None,
+            "summary_seed": None,
+            "interest_tags": [],
+            "core_claims": [],
+        }
+
+    prompt = f"""
+Analyze this source for both source strength and story-defining fields.
+
+Return valid JSON in exactly this shape:
+
+{{
+  "source_strength_score": 0,
+  "source_strength_label": "weak",
+  "is_canonical": false,
+  "contains_verifiable_info": false,
+  "is_primarily_opinion": false,
+  "is_direct_evidence": false,
+  "title": "short event title",
+  "main_issue": "main issue/topic",
+  "event_type": "type of event",
+  "location": "city/state/country or null",
+  "date_reference": "date or time reference or null",
+  "summary_seed": "1-2 sentence summary",
+  "interest_tags": ["politics", "public_safety"],
+  "core_claims": [
+    "claim 1",
+    "claim 2"
+  ]
+}}
+
+Rules for source strength:
+- Evaluate based on factuality, verifiability, directness, and usefulness to a reported story.
+- Opinion-heavy material should score lower.
+- Official statements, documents, data releases, and direct evidence can score higher.
+- Social posts and quotes can be important but should not automatically be treated as verified fact.
+
+Rules for story fields:
+- Keep all story fields concise.
+- Do not invent facts.
+- interest_tags must only come from this list:
+  {", ".join(ALLOWED_INTEREST_TAGS)}
+- core_claims should reflect the strongest story-relevant claims.
+- Rewrite in normalized editorial language, not copied phrasing.
+
+Source type:
+{source.get("source_type")}
+
+Source title:
+{source.get("title")}
+
+Source text:
+{source.get("raw_text")}
+"""
+
+    response = client.responses.create(
+        model=SOURCE_ANALYSIS_MODEL,
+        input=prompt
+    )
+
+    output_text = _clean_json_output(response.output_text)
+
+    try:
+        parsed = json.loads(output_text)
+    except json.JSONDecodeError:
+        raise HTTPException(500, f"Combined source analysis failed: {output_text}")
+
+    parsed["interest_tags"] = [
+        tag for tag in parsed.get("interest_tags", [])
+        if tag in ALLOWED_INTEREST_TAGS
+    ]
+
+    return parsed
+
 def extract_claims_from_source(source: dict):
     prompt = f"""
 Extract only the meaningful, story-relevant claims from this source.
@@ -106,7 +198,7 @@ Source text:
 """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=CLAIM_EXTRACTION_MODEL,
         input=prompt
     )
 
@@ -130,112 +222,6 @@ Source text:
 # -----------------------------------
 # RENDER STORY
 # -----------------------------------
-
-def extract_story_fields_from_source(source: dict):
-    prompt = f"""
-Extract the major story-defining fields from this source.
-
-Return JSON in exactly this shape:
-
-{{
-  "title": "short event title",
-  "main_issue": "main issue/topic",
-  "event_type": "type of event",
-  "location": "city/state/country or null",
-  "date_reference": "date or time reference or null",
-  "summary_seed": "1-2 sentence summary",
-  "interest_tags": ["politics", "public_safety"],
-  "core_claims": [
-    "claim 1",
-    "claim 2"
-  ]
-}}
-
-Rules:
-- Keep it concise.
-- No invented facts.
-- interest_tags must only come from:
-  {", ".join(ALLOWED_INTEREST_TAGS)}
-- core_claims should reflect the strongest story-relevant claims.
-- Rewrite in normalized editorial language, not copied phrasing.
-
-Source type:
-{source.get("source_type")}
-
-Source title:
-{source.get("title")}
-
-Source text:
-{source.get("raw_text")}
-"""
-
-    response = client.responses.create(
-        model="gpt-5-mini",
-        input=prompt
-    )
-
-    try:
-        parsed = json.loads(_clean(response.output_text))
-    except:
-        raise HTTPException(500, "Story field extraction failed")
-
-    parsed["interest_tags"] = [
-        tag for tag in parsed.get("interest_tags", [])
-        if tag in ALLOWED_INTEREST_TAGS
-    ]
-
-    return parsed
-
-def assess_source_strength(source: dict):
-    if source.get("source_type") == "octiq_copy":
-        return {
-            "source_strength_score": 100,
-            "source_strength_label": "canonical",
-            "is_canonical": True,
-            "contains_verifiable_info": True,
-            "is_primarily_opinion": False,
-            "is_direct_evidence": True,
-        }
-
-    prompt = f"""
-Evaluate the strength of this source.
-
-Return JSON:
-
-{{
-  "source_strength_score": 0,
-  "source_strength_label": "weak",
-  "is_canonical": false,
-  "contains_verifiable_info": false,
-  "is_primarily_opinion": false,
-  "is_direct_evidence": false
-}}
-
-Rules:
-- Evaluate based on factuality, verifiability, directness, and usefulness to a reported story.
-- Opinion-heavy material should score lower.
-- Official statements, documents, data releases, and direct evidence can score higher.
-- Social posts and quotes can be important but should not automatically be treated as verified fact.
-
-Source type:
-{source.get("source_type")}
-
-Source title:
-{source.get("title")}
-
-Source text:
-{source.get("raw_text")}
-"""
-
-    response = client.responses.create(
-        model="gpt-5-mini",
-        input=prompt
-    )
-
-    try:
-        return json.loads(_clean(response.output_text))
-    except:
-        raise HTTPException(500, "Source assessment failed")
 
 def build_render_instructions(profile: dict) -> str:
     depth = profile.get("depth_preference", "standard")
@@ -577,7 +563,7 @@ STRICT QUALITY BAR
 """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=EDITORIAL_STRUCTURE_MODEL,
         input=prompt
     )
 
@@ -813,7 +799,7 @@ Return valid JSON in exactly this shape:
 }}
 """
         response = client.responses.create(
-            model="gpt-5-mini",
+            model=STORY_RENDER_MODEL,
             input=prompt
         )
 
@@ -929,7 +915,7 @@ Return valid JSON in exactly this shape:
 """
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=STORY_RENDER_MODEL,
         input=prompt
     )
 
