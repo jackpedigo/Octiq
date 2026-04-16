@@ -4,6 +4,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from fastapi import UploadFile, File, Form
+from uuid import uuid4
+
 from app.supabase_client import supabase
 from app.services.ai_extraction import (
     analyze_source_for_strength_and_story_fields,
@@ -562,6 +565,58 @@ def render_story_for_user(story_cluster_id: str, user_profile_id: str):
         "summary": rendered["summary"],
         "body": rendered["body"],
         "why_it_matters": rendered["why_it_matters"],
+    }
+
+@router.post("/stories/{story_cluster_id}/hero-image")
+async def upload_story_hero_image(
+    story_cluster_id: str,
+    file: UploadFile = File(...),
+    attribution: str = Form("")
+):
+    cluster_response = (
+        supabase.table("story_clusters")
+        .select("*")
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    if not cluster_response.data:
+        raise HTTPException(status_code=404, detail="Story cluster not found")
+
+    allowed_types = {"image/jpeg", "image/png"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Only JPG and PNG images are allowed")
+
+    extension = ".jpg" if file.content_type == "image/jpeg" else ".png"
+    file_path = f"story-hero-images/{story_cluster_id}/{uuid4()}{extension}"
+
+    file_bytes = await file.read()
+
+    upload_response = supabase.storage.from_("images").upload(
+        file_path,
+        file_bytes,
+        {"content-type": file.content_type}
+    )
+
+    # some supabase clients return None on success, so just fetch public URL after upload
+    public_url = supabase.storage.from_("images").get_public_url(file_path)
+
+    updated = (
+        supabase.table("story_clusters")
+        .update({
+            "image_url": public_url,
+            "image_attribution": attribution or None,
+            "content_updated_at": datetime.utcnow().isoformat(),
+        })
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    return {
+        "message": "Hero image uploaded",
+        "image_url": public_url,
+        "image_attribution": attribution,
+        "story_cluster": updated.data[0] if updated.data else None,
     }
 
 @router.post("/stories/{story_cluster_id}/merge")
