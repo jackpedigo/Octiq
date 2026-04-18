@@ -1179,21 +1179,36 @@ export default function OctiqEditorialDashboard() {
                         )}
                       </div>
                     </div>
+                {(tab === "dashboard" || tab === "publishable") &&
+                  selectedStory.story_cluster.image_url && (
+                    <div className="space-y-2">
+                      <img
+                        src={selectedStory.story_cluster.image_url}
+                        alt="Hero preview"
+                        className="h-32 rounded-2xl object-cover"
+                      />
+                      {selectedStory.story_cluster.image_attribution && (
+                        <div className="text-xs text-slate-500">
+                          {selectedStory.story_cluster.image_attribution}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                    {tab === "dashboard" && (
-                      <div className="text-slate-600">
-                        This view shows the story backbone as copy organized in
-                        inverted-pyramid order.
-                      </div>
-                    )}
+                {tab === "dashboard" && (
+                  <div className="text-slate-600">
+                    This view shows the story backbone as copy organized in
+                    inverted-pyramid order.
+                  </div>
+                )}
 
-                    {tab === "publishable" && (
-                      <div className="text-slate-600">
-                        This view shows the structured backbone of the story. Use
-                        “Render full review version” only when you want to
-                        preview the editorial-profile article.
-                      </div>
-                    )}
+                {tab === "publishable" && (
+                  <div className="text-slate-600">
+                    This view shows the structured backbone of the story. Use
+                    “Render full review version” only when you want to
+                    preview the editorial-profile article.
+                  </div>
+                )}
                   </div>
 
                   {tab === "publishable" && showRenderedPreview && (
@@ -1264,20 +1279,6 @@ export default function OctiqEditorialDashboard() {
                         </button>
                       </div>
 
-                      {selectedStory.story_cluster.image_url && (
-                        <div className="space-y-2">
-                          <img
-                            src={selectedStory.story_cluster.image_url}
-                            alt="Hero preview"
-                            className="h-32 rounded-2xl object-cover"
-                          />
-                          {selectedStory.story_cluster.image_attribution && (
-                            <div className="text-xs text-slate-500">
-                              {selectedStory.story_cluster.image_attribution}
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   )}
 
