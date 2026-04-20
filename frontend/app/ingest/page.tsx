@@ -578,7 +578,7 @@ export default function OctiqEditorialDashboard() {
   }, [tab, publishableStories, dashboardOnlyStories, selectedStoryId]);
 
   useEffect(() => {
-    if (selectedStoryId) {
+    if (selectedStoryId && (tab === "dashboard" || tab === "publishable")) {
       setShowRenderedPreview(false);
       loadStory(selectedStoryId);
     }
@@ -855,79 +855,95 @@ export default function OctiqEditorialDashboard() {
     }
   };
 
-  const handleIngest = async () => {
-    setIngesting(true);
-    setError("");
-    setSuccess("");
-    setIngestResult(null);
+const getResolvedClusterId = (data: any) => {
+  return (
+    data.story_cluster_id ||
+    data.cluster_result?.story_cluster_id ||
+    data.cluster_result?.create_result?.story_cluster_id ||
+    data.cluster_result?.add_result?.story_cluster_id ||
+    null
+  );
+};  
+const handleIngest = async () => {
+  setIngesting(true);
+  setError("");
+  setSuccess("");
+  setIngestResult(null);
 
-    try {
-      const payload = {
-        source_type: sourceType,
-        story_cluster_id: storyClusterId || null,
-        title: showTitleField ? title || null : null,
-        raw_text: rawText,
-        source_date: isOctiqCopy ? null : sourceDate || null,
-        source_time: isOctiqCopy ? null : sourceTime || null,
-        source_url: sourceUrl || null,
-        speaker_name: speakerName || null,
-        speaker_entity: speakerEntity || null,
-        entity_name: entityName || null,
-        platform: platform || null,
-        handle: handle || null,
-        outlet_name: outletName || null,
-        document_type: documentType || null,
-        issuing_body: issuingBody || null,
-        file_url: selectedFile ? URL.createObjectURL(selectedFile) : null,
-        file_type: selectedFile ? selectedFile.type : null,
-      };
+  try {
+    const payload = {
+      source_type: sourceType,
+      story_cluster_id: storyClusterId || null,
+      title: showTitleField ? title || null : null,
+      raw_text: rawText,
+      source_date: isOctiqCopy ? null : sourceDate || null,
+      source_time: isOctiqCopy ? null : sourceTime || null,
+      source_url: sourceUrl || null,
+      speaker_name: speakerName || null,
+      speaker_entity: speakerEntity || null,
+      entity_name: entityName || null,
+      platform: platform || null,
+      handle: handle || null,
+      outlet_name: outletName || null,
+      document_type: documentType || null,
+      issuing_body: issuingBody || null,
+      file_url: selectedFile ? URL.createObjectURL(selectedFile) : null,
+      file_type: selectedFile ? selectedFile.type : null,
+    };
 
-      const res = await fetch(`${API_BASE}/sources/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    const res = await fetch(`${API_BASE}/sources/ingest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || "Failed to ingest source");
-      }
-
-      setIngestResult(data);
-      setSuccess("Source ingested successfully.");
-
-      if (data.story_cluster_id) {
-        setStoryClusterId(data.story_cluster_id);
-      }
-
-      await loadDashboard();
-      await loadClusterOptions();
-
-      if (data.story_cluster_id) {
-        setTab("dashboard");
-        setSelectedStoryId(data.story_cluster_id);
-      }
-
-      setTitle("");
-      setRawText("");
-      setSourceDate("");
-      setSourceTime("");
-      setSourceUrl("");
-      setSpeakerName("");
-      setSpeakerEntity("");
-      setEntityName("");
-      setPlatform("");
-      setHandle("");
-      setOutletName("");
-      setDocumentType("");
-      setIssuingBody("");
-      setSelectedFile(null);
-    } catch (err: any) {
-      setError(err.message || "Failed to ingest source");
-    } finally {
-      setIngesting(false);
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "Failed to ingest source");
     }
-  };
+
+    setIngestResult(data);
+    setSuccess("Source ingested successfully.");
+
+    const resolvedClusterId =
+      getResolvedClusterId(data) ||
+      storyClusterId ||
+      selectedStoryId ||
+      null;
+
+    if (resolvedClusterId) {
+      setStoryClusterId(resolvedClusterId);
+    }
+
+    await loadDashboard();
+    await loadClusterOptions();
+
+    if (resolvedClusterId) {
+      setTab("dashboard");
+      setSelectedStoryId(resolvedClusterId);
+      await loadStory(resolvedClusterId);
+    }
+
+    setTitle("");
+    setRawText("");
+    setSourceDate("");
+    setSourceTime("");
+    setSourceUrl("");
+    setSpeakerName("");
+    setSpeakerEntity("");
+    setEntityName("");
+    setPlatform("");
+    setHandle("");
+    setOutletName("");
+    setDocumentType("");
+    setIssuingBody("");
+    setSelectedFile(null);
+  } catch (err: any) {
+    setError(err.message || "Failed to ingest source");
+  } finally {
+    setIngesting(false);
+  }
+};
 
   return (
     <main
