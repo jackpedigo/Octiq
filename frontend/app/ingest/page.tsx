@@ -1365,48 +1365,48 @@ const handleIngest = async () => {
 
               {!loadingSelected && selectedStory && selectedDashboardStory && (
                 <>
-                  <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-5">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
-                        <div className="text-sm text-slate-500">
-                          {tab === "publishable"
-                            ? "Publishable review"
-                            : "Story cluster"}
-                        </div>
-
-                        <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
-                          {selectedStory.story_cluster.top_line ||
-                            selectedDashboardStory.latest_render?.headline ||
-                            selectedStory.story_cluster.title ||
-                            "Untitled story"}
-                        </h2>
-
-                        <div className="flex flex-wrap gap-2 text-sm text-slate-600">
-                          <span className="rounded-full bg-slate-100 px-3 py-1">
-                            {selectedStory.story_cluster.editorial_status ||
-                              "draft"}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1">
-                            {selectedDashboardStory.source_count} sources
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1">
-                            {selectedDashboardStory.claim_count} claims
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1">
-                            {selectedDashboardStory.canonical_claim_count} canonical claims
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1">
-                            Strength {selectedDashboardStory.strength_score}%
-                          </span>
-                        </div>
+                <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-3">
+                      <div className="text-sm text-slate-500">
+                        {tab === "publishable" ? "Publishable review" : "Story cluster"}
                       </div>
-{selectedStory.story_cluster.story_nucleus && (
-  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-    <strong>Nucleus:</strong> {selectedStory.story_cluster.story_nucleus}
-  </div>
-)}
-                      <div className="flex flex-wrap gap-2">
-                        {tab === "dashboard" && (
+
+                      <h2 className="text-3xl font-semibold tracking-tight text-slate-950">
+                        {selectedStory.story_cluster.top_line ||
+                          selectedDashboardStory.latest_render?.headline ||
+                          selectedStory.story_cluster.title ||
+                          "Untitled story"}
+                      </h2>
+
+                      <div className="flex flex-wrap gap-2 text-sm text-slate-600">
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          {selectedStory.story_cluster.editorial_status || "draft"}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          {selectedDashboardStory.source_count} sources
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          {selectedDashboardStory.claim_count} claims
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          {selectedDashboardStory.canonical_claim_count} canonical claims
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1">
+                          Strength {selectedDashboardStory.strength_score}%
+                        </span>
+                      </div>
+
+                      {selectedStory.story_cluster.story_nucleus && (
+                        <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                          <strong>Nucleus:</strong> {selectedStory.story_cluster.story_nucleus}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {tab === "dashboard" && (
+                        <>
                           <button
                             onClick={markPublishable}
                             disabled={publishing}
@@ -1415,44 +1415,14 @@ const handleIngest = async () => {
                           >
                             {publishing ? "Updating..." : "Mark publishable"}
                           </button>
-                        )}
 
-                      <div className="flex flex-wrap gap-2">
-                        {tab === "dashboard" && (
                           <button
                             onClick={openBatchIngestForSelectedStory}
                             className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50"
                           >
                             Ingest source
                           </button>
-                        )}
 
-                        {tab === "publishable" && (
-                          <>
-                            <button
-                              onClick={renderSelectedStory}
-                              disabled={rendering}
-                              className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-                            >
-                              {rendering
-                                ? "Rendering..."
-                                : "Render full review version"}
-                            </button>
-
-                            <button
-                              onClick={publishToHomepage}
-                              disabled={publishing}
-                              className="rounded-full px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
-                              style={{ backgroundColor: "#FFA166" }}
-                            >
-                              {publishing
-                                ? "Publishing..."
-                                : "Publish to Homepage"}
-                            </button>
-                          </>
-                        )}
-
-                        {tab === "dashboard" && (
                           <button
                             onClick={deleteSelectedCluster}
                             disabled={deletingCluster}
@@ -1460,40 +1430,63 @@ const handleIngest = async () => {
                           >
                             {deletingCluster ? "Deleting..." : "Delete cluster"}
                           </button>
+                        </>
+                      )}
+
+                      {tab === "publishable" && (
+                        <>
+                          <button
+                            onClick={renderSelectedStory}
+                            disabled={rendering}
+                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                          >
+                            {rendering ? "Rendering..." : "Render full review version"}
+                          </button>
+
+                          <button
+                            onClick={publishToHomepage}
+                            disabled={publishing}
+                            className="rounded-full px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
+                            style={{ backgroundColor: "#FFA166" }}
+                          >
+                            {publishing ? "Publishing..." : "Publish to Homepage"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {(tab === "dashboard" || tab === "publishable") &&
+                    selectedStory.story_cluster.image_url && (
+                      <div className="space-y-2">
+                        <img
+                          src={selectedStory.story_cluster.image_url}
+                          alt="Hero preview"
+                          className="h-32 rounded-2xl object-cover"
+                        />
+                        {selectedStory.story_cluster.image_attribution && (
+                          <div className="text-xs text-slate-500">
+                            {selectedStory.story_cluster.image_attribution}
+                          </div>
                         )}
                       </div>
-                    </div>
-                {(tab === "dashboard" || tab === "publishable") &&
-                  selectedStory.story_cluster.image_url && (
-                    <div className="space-y-2">
-                      <img
-                        src={selectedStory.story_cluster.image_url}
-                        alt="Hero preview"
-                        className="h-32 rounded-2xl object-cover"
-                      />
-                      {selectedStory.story_cluster.image_attribution && (
-                        <div className="text-xs text-slate-500">
-                          {selectedStory.story_cluster.image_attribution}
-                        </div>
-                      )}
+                    )}
+
+                  {tab === "dashboard" && (
+                    <div className="text-slate-600">
+                      This view shows the story backbone as copy organized in
+                      inverted-pyramid order.
                     </div>
                   )}
 
-                {tab === "dashboard" && (
-                  <div className="text-slate-600">
-                    This view shows the story backbone as copy organized in
-                    inverted-pyramid order.
-                  </div>
-                )}
-
-                {tab === "publishable" && (
-                  <div className="text-slate-600">
-                    This view shows the structured backbone of the story. Use
-                    “Render full review version” only when you want to
-                    preview the editorial-profile article.
-                  </div>
-                )}
-                  </div>
+                  {tab === "publishable" && (
+                    <div className="text-slate-600">
+                      This view shows the structured backbone of the story. Use
+                      {" "}“Render full review version”{" "}
+                      only when you want to preview the editorial-profile article.
+                    </div>
+                  )}
+                </div>
 
                   {tab === "publishable" && showRenderedPreview && (
                     <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
