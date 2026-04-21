@@ -46,6 +46,7 @@ type StoryCluster = {
   location?: string | null;
   date_reference?: string | null;
   summary_seed?: string | null;
+  story_nucleus?: string | null;
   editorial_status?: string | null;
   is_homepage?: boolean | null;
   latest_editor_note?: string | null;
@@ -408,6 +409,34 @@ export default function OctiqEditorialDashboard() {
     Array<{ id: string; title: string }>
   >([]);
 
+  const [showNewStoryPanel, setShowNewStoryPanel] = useState(false);
+  const [newStoryNucleus, setNewStoryNucleus] = useState("");
+  const [newStoryTitle, setNewStoryTitle] = useState("");
+  const [creatingStory, setCreatingStory] = useState(false);
+
+  const [showClusterIngestPanel, setShowClusterIngestPanel] = useState(false);
+  const [batchSources, setBatchSources] = useState<any[]>([
+    {
+      source_type: "octiq_copy",
+      title: "",
+      raw_text: "",
+      source_date: "",
+      source_time: "",
+      source_url: "",
+      speaker_name: "",
+      speaker_entity: "",
+      entity_name: "",
+      platform: "",
+      handle: "",
+      outlet_name: "",
+      document_type: "",
+      issuing_body: "",
+      file_url: "",
+      file_type: "",
+    },
+  ]);
+  const [batchIngesting, setBatchIngesting] = useState(false);
+
   const dashboardOnlyStories = useMemo(
     () =>
       dashboardStories.filter(
@@ -523,6 +552,179 @@ export default function OctiqEditorialDashboard() {
       setClusterOptions(options);
     } catch (err: any) {
       setError(err.message || "Failed to load clusters");
+    }
+  };
+
+  const createNewStory = async () => {
+    if (!newStoryNucleus.trim()) {
+      setError("Enter a story nucleus first.");
+      return;
+    }
+
+    setCreatingStory(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch(`${API_BASE}/stories/create-from-nucleus`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          story_nucleus: newStoryNucleus.trim(),
+          title: newStoryTitle.trim() || null,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to create story");
+      }
+
+      setShowNewStoryPanel(false);
+      setNewStoryNucleus("");
+      setNewStoryTitle("");
+
+      await loadDashboard();
+      await loadClusterOptions();
+
+      if (data.story_cluster_id) {
+        setSelectedStoryId(data.story_cluster_id);
+        await loadStory(data.story_cluster_id);
+      }
+
+      setSuccess("Story cluster created.");
+    } catch (err: any) {
+      setError(err.message || "Failed to create story");
+    } finally {
+      setCreatingStory(false);
+    }
+  };
+
+  const openBatchIngestForSelectedStory = () => {
+    if (!selectedStory) return;
+    setBatchSources([
+      {
+        source_type: "octiq_copy",
+        title: "",
+        raw_text: "",
+        source_date: "",
+        source_time: "",
+        source_url: "",
+        speaker_name: "",
+        speaker_entity: "",
+        entity_name: "",
+        platform: "",
+        handle: "",
+        outlet_name: "",
+        document_type: "",
+        issuing_body: "",
+        file_url: "",
+        file_type: "",
+      },
+    ]);
+    setShowClusterIngestPanel(true);
+  };
+
+  const updateBatchSource = (
+    index: number,
+    field: string,
+    value: string
+  ) => {
+    setBatchSources((prev) =>
+      prev.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+    );
+  };
+
+  const addBatchSourceRow = () => {
+    setBatchSources((prev) => [
+      ...prev,
+      {
+        source_type: "octiq_copy",
+        title: "",
+        raw_text: "",
+        source_date: "",
+        source_time: "",
+        source_url: "",
+        speaker_name: "",
+        speaker_entity: "",
+        entity_name: "",
+        platform: "",
+        handle: "",
+        outlet_name: "",
+        document_type: "",
+        issuing_body: "",
+        file_url: "",
+        file_type: "",
+      },
+    ]);
+  };
+
+  const removeBatchSourceRow = (index: number) => {
+    setBatchSources((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const submitBatchIngest = async () => {
+    if (!selectedStory) return;
+
+    const cleanedSources = batchSources
+      .map((source) => ({
+        ...source,
+        title: source.title || null,
+        raw_text: source.raw_text || "",
+        source_date: source.source_date || null,
+        source_time: source.source_time || null,
+        source_url: source.source_url || null,
+        speaker_name: source.speaker_name || null,
+        speaker_entity: source.speaker_entity || null,
+        entity_name: source.entity_name || null,
+        platform: source.platform || null,
+        handle: source.handle || null,
+        outlet_name: source.outlet_name || null,
+        document_type: source.document_type || null,
+        issuing_body: source.issuing_body || null,
+        file_url: source.file_url || null,
+        file_type: source.file_type || null,
+      }))
+      .filter((source) => source.raw_text.trim());
+
+    if (cleanedSources.length === 0) {
+      setError("Add at least one source with raw text.");
+      return;
+    }
+
+    setBatchIngesting(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/stories/${selectedStory.story_cluster.id}/ingest-batch`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sources: cleanedSources }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to ingest sources");
+      }
+
+      setShowClusterIngestPanel(false);
+      await loadDashboard();
+      await loadClusterOptions();
+      await loadStory(selectedStory.story_cluster.id);
+
+      setSuccess("Sources ingested into story cluster.");
+    } catch (err: any) {
+      setError(err.message || "Failed to ingest sources");
+    } finally {
+      setBatchIngesting(false);
     }
   };
 
@@ -988,6 +1190,12 @@ const handleIngest = async () => {
                 Publishable
               </button>
               <button
+                onClick={() => setShowNewStoryPanel((prev) => !prev)}
+                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-900"
+              >
+                + New Story
+              </button>
+              <button
                 onClick={() => setTab("ingest")}
                 className={`rounded-full px-4 py-2 text-sm font-medium ${
                   tab === "ingest"
@@ -1012,6 +1220,52 @@ const handleIngest = async () => {
             {success}
           </div>
         )}
+
+{showNewStoryPanel && (
+  <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+    <h3 className="text-xl font-semibold text-slate-950">Create new story</h3>
+
+    <label className="space-y-2 block">
+      <div className="text-sm font-medium">Working title (optional)</div>
+      <input
+        value={newStoryTitle}
+        onChange={(e) => setNewStoryTitle(e.target.value)}
+        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+        placeholder="Working title"
+      />
+    </label>
+
+    <label className="space-y-2 block">
+      <div className="text-sm font-medium">Story nucleus</div>
+      <textarea
+        value={newStoryNucleus}
+        onChange={(e) => setNewStoryNucleus(e.target.value)}
+        rows={4}
+        className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+        placeholder="Write 1–2 sentences describing the core of the story. This will guide source ingest and claim extraction."
+      />
+    </label>
+
+    <div className="flex gap-3">
+      <button
+        onClick={createNewStory}
+        disabled={creatingStory}
+        className="rounded-full px-5 py-3 font-medium text-slate-950 disabled:opacity-50"
+        style={{ backgroundColor: "#FFA166" }}
+      >
+        {creatingStory ? "Creating..." : "Create story"}
+      </button>
+
+      <button
+        onClick={() => setShowNewStoryPanel(false)}
+        className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm hover:bg-slate-50"
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+)}
+
 
         {(tab === "dashboard" || tab === "publishable") && (
           <div className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
@@ -1146,7 +1400,11 @@ const handleIngest = async () => {
                           </span>
                         </div>
                       </div>
-
+{selectedStory.story_cluster.story_nucleus && (
+  <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+    <strong>Nucleus:</strong> {selectedStory.story_cluster.story_nucleus}
+  </div>
+)}
                       <div className="flex flex-wrap gap-2">
                         {tab === "dashboard" && (
                           <button
@@ -1156,6 +1414,16 @@ const handleIngest = async () => {
                             style={{ backgroundColor: "#FFA166" }}
                           >
                             {publishing ? "Updating..." : "Mark publishable"}
+                          </button>
+                        )}
+
+                      <div className="flex flex-wrap gap-2">
+                        {tab === "dashboard" && (
+                          <button
+                            onClick={openBatchIngestForSelectedStory}
+                            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm hover:bg-slate-50"
+                          >
+                            Ingest source
                           </button>
                         )}
 
@@ -1295,6 +1563,131 @@ const handleIngest = async () => {
                         </button>
                       </div>
 
+                    </div>
+                  )}
+
+                  {tab === "dashboard" && showClusterIngestPanel && selectedStory && (
+                    <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+                      <div>
+                        <div className="text-sm text-slate-500">Batch ingest</div>
+                        <h3 className="text-xl font-semibold text-slate-950">
+                          Add sources to this story
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          All sources added here will be assigned automatically to this cluster.
+                          Cluster signals and structure will refresh once after the batch completes.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                        <strong>Story nucleus:</strong>{" "}
+                        {selectedStory.story_cluster.story_nucleus || "—"}
+                      </div>
+
+                      <div className="space-y-6">
+                        {batchSources.map((source, index) => (
+                          <div
+                            key={index}
+                            className="rounded-2xl border border-slate-200 p-4 space-y-4"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="font-medium text-slate-900">
+                                Source {index + 1}
+                              </div>
+
+                              {batchSources.length > 1 && (
+                                <button
+                                  onClick={() => removeBatchSourceRow(index)}
+                                  className="text-sm text-red-600 hover:underline"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Source type</div>
+                                <select
+                                  value={source.source_type}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "source_type", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                >
+                                  {SOURCE_TYPES.map((type) => (
+                                    <option key={type} value={type}>
+                                      {formatSourceType(type)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Title (optional)</div>
+                                <input
+                                  value={source.title}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "title", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="Source title"
+                                />
+                              </label>
+                            </div>
+
+                            <label className="space-y-2 block">
+                              <div className="text-sm font-medium">Source URL (optional)</div>
+                              <input
+                                value={source.source_url}
+                                onChange={(e) =>
+                                  updateBatchSource(index, "source_url", e.target.value)
+                                }
+                                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                placeholder="https://..."
+                              />
+                            </label>
+
+                            <label className="space-y-2 block">
+                              <div className="text-sm font-medium">Raw text</div>
+                              <textarea
+                                value={source.raw_text}
+                                onChange={(e) =>
+                                  updateBatchSource(index, "raw_text", e.target.value)
+                                }
+                                rows={8}
+                                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                placeholder="Paste full source text here..."
+                              />
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          onClick={addBatchSourceRow}
+                          className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm hover:bg-slate-50"
+                        >
+                          + Add another source
+                        </button>
+
+                        <button
+                          onClick={submitBatchIngest}
+                          disabled={batchIngesting}
+                          className="rounded-full px-5 py-3 font-medium text-slate-950 disabled:opacity-50"
+                          style={{ backgroundColor: "#FFA166" }}
+                        >
+                          {batchIngesting ? "Ingesting..." : "Save batch and update story"}
+                        </button>
+
+                        <button
+                          onClick={() => setShowClusterIngestPanel(false)}
+                          className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm hover:bg-slate-50"
+                        >
+                          Close
+                        </button>
+                      </div>
                     </div>
                   )}
 

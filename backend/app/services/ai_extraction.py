@@ -223,6 +223,75 @@ Source text:
 # RENDER STORY
 # -----------------------------------
 
+def extract_claims_from_source_for_nucleus(source: dict, story_nucleus: str):
+    prompt = f"""
+Extract only the meaningful, story-relevant claims from this source that directly support,
+materially relate to, or significantly contextualize the following story nucleus.
+
+STORY NUCLEUS:
+{story_nucleus}
+
+Return JSON:
+
+{{
+  "claims": [
+    {{
+      "claim_text": "source-grounded claim text",
+      "normalized_claim_text": "clean editorial version of the claim",
+      "support_excerpt": "exact excerpt from source",
+      "claim_type": "quote|reported_fact|statement|internal_copy|data_point",
+      "claim_order": 1
+    }}
+  ]
+}}
+
+Rules:
+- Extract only claims that directly support, challenge, clarify, or materially contextualize the nucleus.
+- If the source does not materially advance the nucleus, return zero claims.
+- Do not include generic scene-setting, broad background, or unrelated commentary.
+- normalized_claim_text should be rewritten in clean editorial language and should not copy source phrasing.
+- support_excerpt should remain exact.
+- If a direct quote is essential, keep the quote exact in support_excerpt and classify claim_type appropriately.
+- No minimum and no maximum number of claims.
+
+Source type:
+{source.get("source_type")}
+
+Source title:
+{source.get("title")}
+
+Source text:
+{source.get("raw_text")}
+"""
+
+    response = client.responses.create(
+        model=CLAIM_EXTRACTION_MODEL,
+        input=prompt
+    )
+
+    try:
+        parsed = json.loads(_clean_json_output(response.output_text))
+    except Exception:
+        raise HTTPException(500, "Nucleus-aware claim extraction failed")
+
+    claims = parsed.get("claims", [])
+    unique_claims = []
+    seen = set()
+
+    for claim in claims:
+        key = (
+            claim.get("normalized_claim_text")
+            or claim.get("claim_text")
+            or ""
+        ).strip().lower()
+
+        if key and key not in seen:
+            seen.add(key)
+            unique_claims.append(claim)
+
+    return unique_claims
+
+
 def build_render_instructions(profile: dict) -> str:
     depth = profile.get("depth_preference", "standard")
     vocab = profile.get("vocabulary_level", "standard")

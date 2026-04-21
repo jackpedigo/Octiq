@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -10,12 +10,39 @@ from uuid import uuid4
 from app.supabase_client import supabase
 from app.services.ai_extraction import (
     analyze_source_for_strength_and_story_fields,
+    extract_claims_from_source_for_nucleus,
     generate_editorial_structure,
     render_story_from_cluster_and_profile,
 )
 
 router = APIRouter()
 
+class StoryNucleusCreate(BaseModel):
+    story_nucleus: str
+    title: Optional[str] = None
+
+
+class BatchIngestSourceInput(BaseModel):
+    source_type: str
+    title: Optional[str] = None
+    raw_text: str
+    source_date: Optional[str] = None
+    source_time: Optional[str] = None
+    source_url: Optional[str] = None
+    speaker_name: Optional[str] = None
+    speaker_entity: Optional[str] = None
+    entity_name: Optional[str] = None
+    platform: Optional[str] = None
+    handle: Optional[str] = None
+    outlet_name: Optional[str] = None
+    document_type: Optional[str] = None
+    issuing_body: Optional[str] = None
+    file_url: Optional[str] = None
+    file_type: Optional[str] = None
+
+
+class BatchIngestPayload(BaseModel):
+    sources: List[BatchIngestSourceInput]
 
 class StoryEditorialUpdate(BaseModel):
     editorial_status: Optional[str] = None
@@ -96,6 +123,198 @@ def build_and_store_editorial_structure(story_cluster_id: str):
     )
 
     return updated.data[0] if updated.data else None
+
+def ingest_single_source_into_existing_cluster(story_cluster: dict, source_input: BatchIngestSourceInput):
+    source_insert = (
+        supabase.table("sources")
+        .insert({
+            "title": source_input.title or (
+                "Octiq Copy" if source_input.source_type == "octiq_copy" else "Untitled source"
+            ),
+            "source_type": source_input.source_type,
+            "raw_text": source_input.raw_text,
+            "source_date": source_input.source_date,
+            "source_time": source_input.source_time,
+            "source_url": source_input.source_url,
+            "speaker_name": source_input.speaker_name,
+            "speaker_entity": source_input.speaker_entity,
+            "entity_name": source_input.entity_name,
+            "platform": source_input.platform,
+            "handle": source_input.handle,
+            "outlet_name": source_input.outlet_name,
+            "document_type": source_input.document_type,
+            "issuing_body": source_input.issuing_body,
+            "file_url": source_input.file_url,
+            "file_type": source_input.file_type,
+        })
+        .execute()
+    )
+
+    if not source_insert.data:
+        raise HTTPException(status_code=500, detail="Failed to create source")
+
+    source = source_insert.data[0]
+    source_id = source["id"]
+    story_cluster_id = story_cluster["id"]
+
+    if source["source_type"] != "octiq_copy":
+        analysis = analyze_source_for_strength_and_story_fields(source)
+
+        supabase.table("sources").update({
+            "source_strength_score": analysis.get("source_strength_score"),
+            "source_strength_label": analysis.get("source_strength_label"),
+            "is_canonical": analysis.get("is_canonical", False),
+            "contains_verifiable_info": analysis.get("contains_verifiable_info", False),
+            "is_primarily_opinion": analysis.get("is_primarily_opinion", False),
+            "is_direct_evidence": analysis.get("is_direct_evidence", False),
+        }).eq("id", source_id).execute()
+
+        source = (
+            supabase.table("sources")
+            .select("*")
+            .eq("id", source_id)
+            .execute()
+            .data[0]
+        )
+    else:
+        supabase.table("sources").update({
+            "source_strength_score": 100,
+            "source_strength_label": "canonical",
+            "is_canonical": True,
+            "contains_verifiable_info": True,
+            "is_primarily_opinion": False,
+            "is_direct_evidence": True,
+        }).eq("id", source_id).execute()
+
+        source = (
+            supabase.table("sources")
+            .select("*")
+            .eq("id", source_id)
+            .execute()
+            .data[0]
+        )
+
+    existing_source_link = (
+        supabase.table("story_sources")
+        .select("*")
+        .eq("story_cluster_id", story_cluster_id)
+        .eq("source_id", source_id)
+        .execute()
+    )
+
+    if not existing_source_link.data:
+        supabase.table("story_sources").insert({
+            "story_cluster_id": story_cluster_id,
+            "source_id": source_id
+        }).execute()
+
+    nucleus = story_cluster.get("story_nucleus") or story_cluster.get("summary_seed") or story_cluster.get("title") or ""
+
+    claims = extract_claims_from_source_for_nucleus(source, nucleus)
+
+    existing_links_response = (
+        supabase.table("story_claims")
+        .select("claim_id")
+        .eq("story_cluster_id", story_cluster_id)
+        .execute()
+    )
+
+    existing_claim_ids = {
+        row["claim_id"] for row in existing_links_response.data
+    } if existing_links_response.data else set()
+
+    added_count = 0
+
+    for idx, claim in enumerate(claims, start=1):
+        inserted_claim = (
+            supabase.table("claims")
+            .insert({
+                "source_id": source_id,
+                "claim_text": claim.get("claim_text"),
+                "normalized_claim_text": claim.get("normalized_claim_text"),
+                "support_excerpt": claim.get("support_excerpt"),
+                "claim_type": claim.get("claim_type"),
+                "claim_order": claim.get("claim_order") or idx,
+                "story_order": claim.get("claim_order") or idx,
+                "is_core_claim": source.get("is_canonical", False),
+                "verification_status": "core" if source.get("is_canonical", False) else "supported",
+                "support_count": 1,
+            })
+            .execute()
+        )
+
+        if not inserted_claim.data:
+            continue
+
+        claim_row = inserted_claim.data[0]
+        claim_id = claim_row["id"]
+
+        if claim_id in existing_claim_ids:
+            continue
+
+        supabase.table("story_claims").insert({
+            "story_cluster_id": story_cluster_id,
+            "claim_id": claim_id,
+            "is_core_claim": claim_row.get("is_core_claim", False),
+        }).execute()
+
+        added_count += 1
+
+    return {
+        "source_id": source_id,
+        "title": source.get("title"),
+        "claims_added": added_count,
+    }
+
+@router.post("/stories/{story_cluster_id}/ingest-batch")
+def ingest_batch_into_story_cluster(story_cluster_id: str, payload: BatchIngestPayload):
+    cluster_response = (
+        supabase.table("story_clusters")
+        .select("*")
+        .eq("id", story_cluster_id)
+        .execute()
+    )
+
+    if not cluster_response.data:
+        raise HTTPException(status_code=404, detail="Story cluster not found")
+
+    story_cluster = cluster_response.data[0]
+
+    if not payload.sources:
+        raise HTTPException(status_code=400, detail="At least one source is required")
+
+    ingested_sources = []
+    total_claims_added = 0
+
+    for source_input in payload.sources:
+        result = ingest_single_source_into_existing_cluster(story_cluster, source_input)
+        ingested_sources.append(result)
+        total_claims_added += result.get("claims_added", 0)
+
+    updated_cluster = None
+    structure_updated = False
+
+    if total_claims_added > 0:
+        updated_cluster = refresh_story_cluster_metadata(story_cluster_id)
+        build_and_store_editorial_structure(story_cluster_id)
+        structure_updated = True
+    else:
+        updated_cluster = (
+            supabase.table("story_clusters")
+            .select("*")
+            .eq("id", story_cluster_id)
+            .execute()
+            .data[0]
+        )
+
+    return {
+        "message": "Batch ingest complete",
+        "story_cluster_id": story_cluster_id,
+        "sources_ingested": ingested_sources,
+        "total_claims_added": total_claims_added,
+        "structure_updated": structure_updated,
+        "updated_cluster": updated_cluster,
+    }
 
 def create_story_cluster_from_source(source_id: str):
     source_response = (
@@ -565,6 +784,37 @@ def render_story_for_user(story_cluster_id: str, user_profile_id: str):
         "summary": rendered["summary"],
         "body": rendered["body"],
         "why_it_matters": rendered["why_it_matters"],
+    }
+
+@router.post("/stories/create-from-nucleus")
+def create_story_from_nucleus(payload: StoryNucleusCreate):
+    nucleus = (payload.story_nucleus or "").strip()
+    if not nucleus:
+        raise HTTPException(status_code=400, detail="story_nucleus is required")
+
+    inserted = (
+        supabase.table("story_clusters")
+        .insert({
+            "title": payload.title or "Untitled story",
+            "top_line": payload.title or "Untitled story",
+            "story_nucleus": nucleus,
+            "summary_seed": nucleus,
+            "editorial_status": "draft",
+            "status": "draft",
+            "content_updated_at": datetime.utcnow().isoformat(),
+        })
+        .execute()
+    )
+
+    if not inserted.data:
+        raise HTTPException(status_code=500, detail="Failed to create story cluster")
+
+    cluster = inserted.data[0]
+
+    return {
+        "message": "Story cluster created",
+        "story_cluster_id": cluster["id"],
+        "story_cluster": cluster,
     }
 
 @router.post("/stories/{story_cluster_id}/hero-image")
