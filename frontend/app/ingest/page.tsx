@@ -1578,46 +1578,64 @@ const handleIngest = async () => {
                       </div>
 
                       <div className="space-y-6">
-                        {batchSources.map((source, index) => (
-                          <div
-                            key={index}
-                            className="rounded-2xl border border-slate-200 p-4 space-y-4"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="font-medium text-slate-900">
-                                Source {index + 1}
-                              </div>
+                    {batchSources.map((source, index) => {
+                      const isBatchOctiqCopy = source.source_type === "octiq_copy";
+                      const isBatchSpeechLike = ["quote", "interview", "speech"].includes(
+                        source.source_type
+                      );
+                      const isBatchSocial = source.source_type === "social_post";
+                      const isBatchOfficial = source.source_type === "official_statement";
+                      const isBatchNewsArticle = source.source_type === "news_article";
+                      const isBatchDocument = source.source_type === "document";
+                      const isBatchDataRelease = source.source_type === "data_release";
+                      const showBatchTitleField = [
+                        "official_statement",
+                        "document",
+                        "data_release",
+                        "news_article",
+                      ].includes(source.source_type);
 
-                              {batchSources.length > 1 && (
-                                <button
-                                  onClick={() => removeBatchSourceRow(index)}
-                                  className="text-sm text-red-600 hover:underline"
-                                >
-                                  Remove
-                                </button>
-                              )}
+                      return (
+                        <div
+                          key={index}
+                          className="rounded-2xl border border-slate-200 p-4 space-y-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="font-medium text-slate-900">
+                              Source {index + 1}
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <label className="space-y-2">
-                                <div className="text-sm font-medium">Source type</div>
-                                <select
-                                  value={source.source_type}
-                                  onChange={(e) =>
-                                    updateBatchSource(index, "source_type", e.target.value)
-                                  }
-                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                                >
-                                  {SOURCE_TYPES.map((type) => (
-                                    <option key={type} value={type}>
-                                      {formatSourceType(type)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
+                            {batchSources.length > 1 && (
+                              <button
+                                onClick={() => removeBatchSourceRow(index)}
+                                className="text-sm text-red-600 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
 
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <label className="space-y-2">
+                              <div className="text-sm font-medium">Source type</div>
+                              <select
+                                value={source.source_type}
+                                onChange={(e) =>
+                                  updateBatchSource(index, "source_type", e.target.value)
+                                }
+                                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                              >
+                                {SOURCE_TYPES.map((type) => (
+                                  <option key={type} value={type}>
+                                    {formatSourceType(type)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            {showBatchTitleField ? (
                               <label className="space-y-2">
-                                <div className="text-sm font-medium">Title (optional)</div>
+                                <div className="text-sm font-medium">Title</div>
                                 <input
                                   value={source.title}
                                   onChange={(e) =>
@@ -1627,8 +1645,40 @@ const handleIngest = async () => {
                                   placeholder="Source title"
                                 />
                               </label>
-                            </div>
+                            ) : (
+                              <div />
+                            )}
+                          </div>
 
+                          {!isBatchOctiqCopy && (
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Source date (optional)</div>
+                                <input
+                                  type="date"
+                                  value={source.source_date}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "source_date", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Source time (optional)</div>
+                                <input
+                                  type="time"
+                                  value={source.source_time}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "source_time", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                />
+                              </label>
+                            </div>
+                          )}
+
+                          {!isBatchOctiqCopy && (
                             <label className="space-y-2 block">
                               <div className="text-sm font-medium">Source URL (optional)</div>
                               <input
@@ -1640,22 +1690,167 @@ const handleIngest = async () => {
                                 placeholder="https://..."
                               />
                             </label>
+                          )}
 
+                          {isBatchSpeechLike && (
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Speaker name</div>
+                                <input
+                                  value={source.speaker_name}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "speaker_name", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="Jane Smith"
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Speaker entity</div>
+                                <input
+                                  value={source.speaker_entity}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "speaker_entity", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="Agency or organization"
+                                />
+                              </label>
+                            </div>
+                          )}
+
+                          {isBatchOfficial && (
                             <label className="space-y-2 block">
-                              <div className="text-sm font-medium">Raw text</div>
-                              <textarea
-                                value={source.raw_text}
+                              <div className="text-sm font-medium">Entity name</div>
+                              <input
+                                value={source.entity_name}
                                 onChange={(e) =>
-                                  updateBatchSource(index, "raw_text", e.target.value)
+                                  updateBatchSource(index, "entity_name", e.target.value)
                                 }
-                                rows={8}
                                 className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
-                                placeholder="Paste full source text here..."
+                                placeholder="Issuing organization"
                               />
                             </label>
-                          </div>
-                        ))}
-                      </div>
+                          )}
+
+                          {isBatchSocial && (
+                            <div className="grid gap-4 md:grid-cols-3">
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Platform</div>
+                                <input
+                                  value={source.platform}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "platform", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="X"
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Account / speaker name</div>
+                                <input
+                                  value={source.speaker_name}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "speaker_name", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="Account name"
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Handle</div>
+                                <input
+                                  value={source.handle}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "handle", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="@handle"
+                                />
+                              </label>
+                            </div>
+                          )}
+
+                          {isBatchNewsArticle && (
+                            <label className="space-y-2 block">
+                              <div className="text-sm font-medium">Outlet name</div>
+                              <input
+                                value={source.outlet_name}
+                                onChange={(e) =>
+                                  updateBatchSource(index, "outlet_name", e.target.value)
+                                }
+                                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                placeholder="Outlet name"
+                              />
+                            </label>
+                          )}
+
+                          {isBatchDocument && (
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Document type</div>
+                                <input
+                                  value={source.document_type}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "document_type", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="Court filing"
+                                />
+                              </label>
+
+                              <label className="space-y-2">
+                                <div className="text-sm font-medium">Issuing body</div>
+                                <input
+                                  value={source.issuing_body}
+                                  onChange={(e) =>
+                                    updateBatchSource(index, "issuing_body", e.target.value)
+                                  }
+                                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                  placeholder="Issuing body"
+                                />
+                              </label>
+                            </div>
+                          )}
+
+                          {isBatchDataRelease && (
+                            <label className="space-y-2 block">
+                              <div className="text-sm font-medium">Issuing body</div>
+                              <input
+                                value={source.issuing_body}
+                                onChange={(e) =>
+                                  updateBatchSource(index, "issuing_body", e.target.value)
+                                }
+                                className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                                placeholder="Issuing body"
+                              />
+                            </label>
+                          )}
+
+                          <label className="space-y-2 block">
+                            <div className="text-sm font-medium">
+                              {isBatchOctiqCopy ? "Octiq copy" : "Raw text"}
+                            </div>
+                            <textarea
+                              value={source.raw_text}
+                              onChange={(e) =>
+                                updateBatchSource(index, "raw_text", e.target.value)
+                              }
+                              rows={8}
+                              className="w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300"
+                              placeholder={
+                                isBatchOctiqCopy
+                                  ? "Paste Octiq canonical copy here..."
+                                  : "Paste full source text here..."
+                              }
+                            />
+                          </label>
+                        </div>
+                      );
+                    })}
 
                       <div className="flex flex-wrap gap-3">
                         <button
